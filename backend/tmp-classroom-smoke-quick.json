@@ -1,0 +1,47 @@
+[
+    {
+        "Action":  "teacher.login",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "student.login",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "teacher.state.get",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "teacher.state.save",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "student.join",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "student.classes.get",
+        "Status":  "PASS",
+        "Detail":  "count=1"
+    },
+    {
+        "Action":  "teacher.announcement.post",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "student.announcement.get",
+        "Status":  "PASS",
+        "Detail":  "classrooms=99001"
+    },
+    {
+        "Action":  "teacher.classroom.audit.logs",
+        "Status":  "FAIL",
+        "Detail":  "The remote server returned an error: (403) Forbidden."
+    }
+]

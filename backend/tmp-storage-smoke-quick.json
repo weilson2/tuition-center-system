@@ -1,0 +1,72 @@
+[
+    {
+        "Action":  "teacher.login",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "student.login",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "storage.quota",
+        "Status":  "PASS",
+        "Detail":  "used=517"
+    },
+    {
+        "Action":  "storage.folders.list",
+        "Status":  "PASS",
+        "Detail":  "count=13"
+    },
+    {
+        "Action":  "storage.folder.create",
+        "Status":  "PASS",
+        "Detail":  "folderId=23"
+    },
+    {
+        "Action":  "storage.files.list",
+        "Status":  "PASS",
+        "Detail":  "pickedFileId=73"
+    },
+    {
+        "Action":  "storage.file.details",
+        "Status":  "PASS",
+        "Detail":  "ok"
+    },
+    {
+        "Action":  "storage.sharing.history",
+        "Status":  "PASS",
+        "Detail":  "count=1"
+    },
+    {
+        "Action":  "storage.file.share",
+        "Status":  "PASS",
+        "Detail":  "recipient=12"
+    },
+    {
+        "Action":  "storage.share.revoke",
+        "Status":  "PASS",
+        "Detail":  "sharingId=69"
+    },
+    {
+        "Action":  "student.sharedFiles.list",
+        "Status":  "PASS",
+        "Detail":  "count=8"
+    },
+    {
+        "Action":  "student.notifications.list",
+        "Status":  "PASS",
+        "Detail":  "count=13"
+    },
+    {
+        "Action":  "student.notifications.markRead",
+        "Status":  "PASS",
+        "Detail":  "notificationId=33"
+    },
+    {
+        "Action":  "storage.folder.delete",
+        "Status":  "PASS",
+        "Detail":  "folderId=23"
+    }
+]

@@ -1,0 +1,244 @@
+.admin-login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  padding: 2rem;
+}
+
+.admin-login-wrapper {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.admin-login-box {
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.admin-header {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  padding: 2.5rem 2rem;
+  text-align: center;
+  color: white;
+}
+
+.admin-icon {
+  width: 4rem;
+  height: 4rem;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+}
+
+.admin-icon i {
+  font-size: 2rem;
+}
+
+.admin-header h2 {
+  font-size: 1.875rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.admin-header p {
+  font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+.admin-form {
+  padding: 2rem;
+}
+
+.admin-error {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #fecaca;
+  animation: slideDown 0.3s ease-out;
+  line-height: 1.5;
+}
+
+.admin-error i {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.admin-form-group {
+  margin-bottom: 1.5rem;
+}
+
+.admin-form-group label {
+  display: block;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.admin-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.admin-input-wrapper i {
+  position: absolute;
+  left: 1rem;
+  color: #9ca3af;
+}
+
+.admin-input-wrapper input {
+  width: 100%;
+  padding: 0.875rem 1rem 0.875rem 2.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.admin-input-wrapper input[name="password"] {
+  padding-right: 3rem;
+}
+
+.admin-input-wrapper input:focus {
+  outline: none;
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.admin-input-wrapper input:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.admin-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.625rem;
+  transform: translateY(-50%);
+  width: 1.9rem;
+  height: 1.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 0.375rem;
+  line-height: 1;
+}
+
+.admin-password-toggle:hover {
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+.admin-login-btn {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.admin-login-btn:hover:not(:disabled) {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+}
+
+.admin-login-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.admin-security-notice {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  border-top: 1px solid #fecaca;
+}
+
+.admin-security-notice i {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.admin-back-link {
+  padding: 1.5rem 2rem;
+  text-align: center;
+  border-top: 1px solid #e5e7eb;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 0.875rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: color 0.2s;
+}
+
+.back-btn:hover {
+  color: #111827;
+}
+
+@media (max-width: 640px) {
+  .admin-login-container {
+    padding: 1rem;
+  }
+
+  .admin-header {
+    padding: 2rem 1.5rem;
+  }
+
+  .admin-form {
+    padding: 1.5rem;
+  }
+}

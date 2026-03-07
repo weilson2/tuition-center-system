@@ -1,0 +1,436 @@
+{
+  "baseUrl": "http://localhost:5000/api",
+  "executedAt": "2026-03-07T08:58:40.643Z",
+  "totals": {
+    "total": 53,
+    "pass": 38,
+    "fail": 15,
+    "skip": 0
+  },
+  "results": [
+    {
+      "role": "system",
+      "action": "health",
+      "status": "PASS",
+      "message": "health ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:20.281Z"
+    },
+    {
+      "role": "teacher",
+      "action": "auth.login",
+      "status": "PASS",
+      "message": "login ok (teacher@test.com)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:22.591Z"
+    },
+    {
+      "role": "teacher",
+      "action": "auth.me",
+      "status": "PASS",
+      "message": "auth.me ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:24.764Z"
+    },
+    {
+      "role": "teacher",
+      "action": "profile.me",
+      "status": "PASS",
+      "message": "profile.me ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:25.900Z"
+    },
+    {
+      "role": "student",
+      "action": "auth.login",
+      "status": "PASS",
+      "message": "login ok (student@test.com)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:28.134Z"
+    },
+    {
+      "role": "student",
+      "action": "auth.me",
+      "status": "PASS",
+      "message": "auth.me ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:29.546Z"
+    },
+    {
+      "role": "student",
+      "action": "profile.me",
+      "status": "PASS",
+      "message": "profile.me ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:30.646Z"
+    },
+    {
+      "role": "admin",
+      "action": "auth.login",
+      "status": "FAIL",
+      "message": "Too many admin login attempts. Please try again after 15 minutes.",
+      "httpStatus": 429,
+      "timestamp": "2026-03-07T08:57:30.649Z"
+    },
+    {
+      "role": "admin",
+      "action": "auth.me",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:57:30.651Z"
+    },
+    {
+      "role": "admin",
+      "action": "profile.me",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:57:30.653Z"
+    },
+    {
+      "role": "teacher",
+      "action": "classroom.teacher.state.get",
+      "status": "PASS",
+      "message": "teacher state fetched",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:33.677Z"
+    },
+    {
+      "role": "teacher",
+      "action": "classroom.teacher.state.save",
+      "status": "PASS",
+      "message": "teacher state saved",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:35.324Z"
+    },
+    {
+      "role": "student",
+      "action": "classroom.student.classes.get.beforeJoin",
+      "status": "PASS",
+      "message": "classes returned (1)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:37.831Z"
+    },
+    {
+      "role": "student",
+      "action": "classroom.student.join",
+      "status": "PASS",
+      "message": "student joined class",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:41.011Z"
+    },
+    {
+      "role": "student",
+      "action": "classroom.student.classes.get.afterJoin",
+      "status": "PASS",
+      "message": "joined class visible",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:43.469Z"
+    },
+    {
+      "role": "teacher",
+      "action": "classroom.announcement.post",
+      "status": "PASS",
+      "message": "announcement posted",
+      "httpStatus": 201,
+      "timestamp": "2026-03-07T08:57:45.127Z"
+    },
+    {
+      "role": "student",
+      "action": "classroom.announcement.get",
+      "status": "PASS",
+      "message": "announcements fetched",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:46.243Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.quota",
+      "status": "PASS",
+      "message": "quota fetched",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:47.887Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.folders.list",
+      "status": "PASS",
+      "message": "folders listed",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:49.022Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.folder.create",
+      "status": "PASS",
+      "message": "folder created (21)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:50.677Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.file.upload",
+      "status": "PASS",
+      "message": "file uploaded (71)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:56.125Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.files.list",
+      "status": "PASS",
+      "message": "my files listed",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:57.536Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.file.details",
+      "status": "PASS",
+      "message": "file details ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:57:59.298Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.file.rename",
+      "status": "FAIL",
+      "message": "Filename cannot be empty",
+      "httpStatus": 400,
+      "timestamp": "2026-03-07T08:58:00.166Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.file.updateContent",
+      "status": "PASS",
+      "message": "file content updated",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:04.480Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.file.preview",
+      "status": "PASS",
+      "message": "preview ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:06.415Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.file.download",
+      "status": "PASS",
+      "message": "download ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:07.664Z"
+    },
+    {
+      "role": "teacher",
+      "action": "users.list.forSharing",
+      "status": "PASS",
+      "message": "share recipient selected (12)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:08.954Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.file.share",
+      "status": "PASS",
+      "message": "file shared",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:12.123Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.sharingHistory",
+      "status": "PASS",
+      "message": "sharing history fetched (1)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:13.477Z"
+    },
+    {
+      "role": "student",
+      "action": "storage.sharedFiles.list",
+      "status": "PASS",
+      "message": "shared files listed",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:14.750Z"
+    },
+    {
+      "role": "student",
+      "action": "storage.notifications.list",
+      "status": "PASS",
+      "message": "notifications fetched (13)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:15.792Z"
+    },
+    {
+      "role": "student",
+      "action": "storage.notification.markRead",
+      "status": "PASS",
+      "message": "notification marked read",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:17.076Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.share.revoke",
+      "status": "PASS",
+      "message": "sharing revoked",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:19.145Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.file.delete",
+      "status": "PASS",
+      "message": "file deleted",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:22.943Z"
+    },
+    {
+      "role": "teacher",
+      "action": "storage.folder.delete",
+      "status": "PASS",
+      "message": "folder deleted",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:25.310Z"
+    },
+    {
+      "role": "student",
+      "action": "storage.file.upload.forAssignment",
+      "status": "PASS",
+      "message": "student assignment file uploaded (72)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:28.479Z"
+    },
+    {
+      "role": "student",
+      "action": "classroom.assignment.submit",
+      "status": "PASS",
+      "message": "assignment submitted",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:31.604Z"
+    },
+    {
+      "role": "teacher",
+      "action": "classroom.teacher.state.get.afterSubmit",
+      "status": "PASS",
+      "message": "submission discovered (41)",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:33.928Z"
+    },
+    {
+      "role": "teacher",
+      "action": "classroom.submission.grade",
+      "status": "PASS",
+      "message": "submission graded",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:35.729Z"
+    },
+    {
+      "role": "teacher",
+      "action": "classroom.audit.logs",
+      "status": "FAIL",
+      "message": "Admin access required",
+      "httpStatus": 403,
+      "timestamp": "2026-03-07T08:58:36.502Z"
+    },
+    {
+      "role": "teacher",
+      "action": "classroom.audit.stats",
+      "status": "FAIL",
+      "message": "Admin access required",
+      "httpStatus": 403,
+      "timestamp": "2026-03-07T08:58:37.282Z"
+    },
+    {
+      "role": "teacher",
+      "action": "classroom.audit.export",
+      "status": "FAIL",
+      "message": "Admin access required",
+      "httpStatus": 403,
+      "timestamp": "2026-03-07T08:58:38.056Z"
+    },
+    {
+      "role": "admin",
+      "action": "admin.audit.logs",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:58:38.058Z"
+    },
+    {
+      "role": "admin",
+      "action": "admin.audit.stats",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:58:38.059Z"
+    },
+    {
+      "role": "admin",
+      "action": "admin.audit.export",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:58:38.060Z"
+    },
+    {
+      "role": "admin",
+      "action": "admin.users.list",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:58:38.061Z"
+    },
+    {
+      "role": "admin",
+      "action": "admin.users.stats",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:58:38.062Z"
+    },
+    {
+      "role": "admin",
+      "action": "admin.rbac.get",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:58:38.063Z"
+    },
+    {
+      "role": "admin",
+      "action": "admin.classrooms.list",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:58:38.063Z"
+    },
+    {
+      "role": "teacher",
+      "action": "auth.logout",
+      "status": "PASS",
+      "message": "logout ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:39.356Z"
+    },
+    {
+      "role": "student",
+      "action": "auth.logout",
+      "status": "PASS",
+      "message": "logout ok",
+      "httpStatus": 200,
+      "timestamp": "2026-03-07T08:58:40.642Z"
+    },
+    {
+      "role": "admin",
+      "action": "auth.logout",
+      "status": "FAIL",
+      "message": "Authentication required",
+      "httpStatus": 401,
+      "timestamp": "2026-03-07T08:58:40.643Z"
+    }
+  ]
+}
