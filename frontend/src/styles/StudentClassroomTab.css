@@ -561,6 +561,114 @@
   cursor: pointer;
 }
 
+.student-attendance-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.student-attendance-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.student-attendance-summary-grid > div {
+  border-radius: 0.5rem;
+  text-align: center;
+  padding: 0.62rem;
+}
+
+.student-attendance-summary-grid > div strong {
+  display: block;
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.student-attendance-summary-grid > div span {
+  font-size: 0.74rem;
+  color: #334155;
+}
+
+.student-attendance-summary-grid .sessions {
+  background: #eff6ff;
+}
+
+.student-attendance-summary-grid .sessions strong {
+  color: #2563eb;
+}
+
+.student-attendance-summary-grid .present {
+  background: #ecfdf3;
+}
+
+.student-attendance-summary-grid .present strong {
+  color: #15803d;
+}
+
+.student-attendance-summary-grid .absent {
+  background: #fef2f2;
+}
+
+.student-attendance-summary-grid .absent strong {
+  color: #dc2626;
+}
+
+.student-attendance-summary-grid .rate {
+  background: #f8f7e7;
+}
+
+.student-attendance-summary-grid .rate strong {
+  color: #a16207;
+}
+
+.student-attendance-history-list {
+  border: 1px solid #dbe1ea;
+  border-radius: 0.6rem;
+  background: #fff;
+}
+
+.student-attendance-history-row {
+  padding: 0.68rem 0.72rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.student-attendance-history-row + .student-attendance-history-row {
+  border-top: 1px solid #eef2f7;
+}
+
+.student-attendance-history-meta strong {
+  display: block;
+  color: #0f172a;
+  font-size: 0.84rem;
+}
+
+.student-attendance-history-meta p {
+  margin: 0.14rem 0 0;
+  color: #64748b;
+  font-size: 0.74rem;
+}
+
+.student-attendance-status {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.52rem;
+}
+
+.student-attendance-status.present {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.student-attendance-status.absent {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 .student-submit-modal {
   width: min(480px, 94vw);
   background: #fff;

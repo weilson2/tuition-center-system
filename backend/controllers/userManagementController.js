@@ -9,6 +9,7 @@ const {
   sendWelcomeEmail
 } = require('../services/emailService');
 const User = require('../models/User');
+const { checkUserScheduleConflict } = require('../utils/scheduleMatcher');
 
 const EXPORT_RATE_TRACKER = new Map();
 
@@ -146,7 +147,7 @@ async function promoteStudentsForCurrentYear() {
 function getStorageQuotaByRole(role) {
   const normalizedRole = normalizeRole(role);
   if (normalizedRole === 'admin') {
-    return null;
+    return 0; // Admin does not have a quota limit, but database column cannot be null
   }
   return STORAGE_QUOTA_BY_ROLE[normalizedRole] || STORAGE_QUOTA_BY_ROLE.student;
 }
@@ -788,6 +789,17 @@ async function enrollUsers(req, res) {
           failed.push({
             userId: selectedUserId,
             reason: `Student level mismatch: requires ${classroomGradeLevel}`
+          });
+          continue;
+        }
+      }
+
+      if (normalizedTargetType === 'classroom') {
+        const scheduleConflict = await checkUserScheduleConflict(selectedUserId, parsedTargetId, pool);
+        if (scheduleConflict.hasConflict) {
+          failed.push({
+            userId: selectedUserId,
+            reason: `Schedule conflict with existing class: ${scheduleConflict.conflictingClassroomName || 'another class'}`
           });
           continue;
         }

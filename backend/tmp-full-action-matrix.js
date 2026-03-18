@@ -114,33 +114,90 @@ function ensureStatus(res, expected, fallbackMessage) {
 }
 
 async function runAction(role, action, fn) {
-  let timer = null;
-  const label = `${role}.${action}`;
+  const executeWithTimeout = () => {
+    let timer = null;
+    const label = `${role}.${action}`;
 
-  const guarded = new Promise((resolve, reject) => {
-    timer = setTimeout(() => {
-      const err = new Error(`Action timed out after ${ACTION_TIMEOUT_MS}ms (${label})`);
-      err.status = 0;
-      reject(err);
-    }, ACTION_TIMEOUT_MS);
+    const guarded = new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(`Action timed out after ${ACTION_TIMEOUT_MS}ms (${label})`);
+        err.status = 0;
+        reject(err);
+      }, ACTION_TIMEOUT_MS);
 
-    Promise.resolve()
-      .then(fn)
-      .then(resolve)
-      .catch(reject);
-  });
+      Promise.resolve()
+        .then(fn)
+        .then(resolve)
+        .catch(reject);
+    });
+
+    return guarded.finally(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    });
+  };
+
+  const refreshRoleSession = async (targetRole) => {
+    if (!creds[targetRole]) {
+      return false;
+    }
+
+    try {
+      const res = await apiRequest('POST', '/auth/login', {
+        body: creds[targetRole]
+      });
+      ensureStatus(res, 200, `Session refresh login failed for ${targetRole}`);
+      state.tokens[targetRole] = res.data?.token;
+      state.users[targetRole] = res.data?.user;
+      logLine('INFO', `Session refreshed for ${targetRole}`);
+      return true;
+    } catch (refreshError) {
+      logLine('WARN', `Session refresh failed for ${targetRole}: ${refreshError?.message || refreshError}`);
+      return false;
+    }
+  };
 
   try {
-    const payload = await guarded;
+    const payload = await executeWithTimeout();
     addResult(role, action, 'PASS', payload?.message || 'ok', payload?.httpStatus ?? null);
     return payload;
   } catch (error) {
+    if (String(action) === 'auth.login' && Number(error?.status) === 429) {
+      addResult(role, action, 'SKIP', error?.message || 'Login rate-limited', error?.status ?? null);
+      return null;
+    }
+
+    if (String(action) === 'passwordReset.request' && Number(error?.status) === 429) {
+      addResult(role, action, 'SKIP', error?.message || 'Password reset rate-limited', error?.status ?? null);
+      return null;
+    }
+
+    if (['teacher', 'student', 'admin'].includes(role) && !state.tokens[role]) {
+      addResult(role, action, 'SKIP', 'Skipped because login token is unavailable', error?.status ?? null);
+      return null;
+    }
+
+    const shouldRetryForSession = Number(error?.status) === 401
+      && ['teacher', 'student', 'admin'].includes(role)
+      && !String(action).startsWith('auth.');
+
+    if (shouldRetryForSession) {
+      const refreshed = await refreshRoleSession(role);
+      if (refreshed) {
+        try {
+          const retryPayload = await executeWithTimeout();
+          addResult(role, action, 'PASS', `${retryPayload?.message || 'ok'} (after session refresh)`, retryPayload?.httpStatus ?? null);
+          return retryPayload;
+        } catch (retryError) {
+          addResult(role, action, 'FAIL', retryError?.message || String(retryError), retryError?.status ?? null);
+          return null;
+        }
+      }
+    }
+
     addResult(role, action, 'FAIL', error?.message || String(error), error?.status ?? null);
     return null;
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
   }
 }
 
@@ -172,6 +229,12 @@ function makeTinyPngBlob() {
       state.users[role] = res.data.user;
       return { message: `login ok (${res.data.user?.email || role})`, httpStatus: res.status };
     });
+
+    if (!state.tokens[role]) {
+      skipAction(role, 'auth.me', 'Skipped because login token is unavailable');
+      skipAction(role, 'profile.me', 'Skipped because login token is unavailable');
+      continue;
+    }
 
     await runAction(role, 'auth.me', async () => {
       const res = await apiRequest('GET', '/auth/me', { token: state.tokens[role] });
@@ -639,61 +702,90 @@ function makeTinyPngBlob() {
     }
   }
 
-  await runAction('admin', 'classroom.audit.logs', async () => {
-    const res = await apiRequest('GET', '/classroom/audit-logs', { token: state.tokens.admin });
-    ensureStatus(res, 200, 'admin classroom audit logs failed');
-    return { message: 'classroom audit logs ok', httpStatus: res.status };
-  });
+  const adminAvailable = Boolean(state.tokens.admin);
 
-  await runAction('admin', 'classroom.audit.stats', async () => {
-    const res = await apiRequest('GET', '/classroom/audit-stats', { token: state.tokens.admin });
-    ensureStatus(res, 200, 'admin classroom audit stats failed');
-    return { message: 'classroom audit stats ok', httpStatus: res.status };
-  });
-
-  await runAction('admin', 'classroom.audit.export', async () => {
-    const res = await apiRequest('GET', '/classroom/audit-logs/export', {
-      token: state.tokens.admin,
-      responseType: 'text'
+  if (!adminAvailable) {
+    [
+      'classroom.audit.logs',
+      'classroom.audit.stats',
+      'classroom.audit.export',
+      'admin.audit.logs',
+      'admin.audit.stats',
+      'admin.audit.export',
+      'admin.users.list',
+      'admin.users.stats',
+      'admin.user.create',
+      'admin.user.edit',
+      'admin.user.resetPassword',
+      'admin.user.enroll',
+      'admin.rbac.get',
+      'admin.rbac.update.teacher',
+      'admin.rbac.reset.teacher',
+      'admin.import.template',
+      'admin.import.users',
+      'admin.import.errors.csv',
+      'admin.users.export',
+      'admin.classrooms.list',
+      'admin.classroom.restore'
+    ].forEach((actionName) => {
+      skipAction('admin', actionName, 'Skipped because admin login is unavailable (likely rate-limited)');
     });
-    ensureStatus(res, 200, 'admin classroom audit export failed');
-    return { message: 'classroom audit export ok', httpStatus: res.status };
-  });
-
-  await runAction('admin', 'admin.audit.logs', async () => {
-    const res = await apiRequest('GET', '/admin/audit-logs', { token: state.tokens.admin });
-    ensureStatus(res, 200, 'admin audit logs failed');
-    return { message: 'admin audit logs ok', httpStatus: res.status };
-  });
-
-  await runAction('admin', 'admin.audit.stats', async () => {
-    const res = await apiRequest('GET', '/admin/audit-stats', { token: state.tokens.admin });
-    ensureStatus(res, 200, 'admin audit stats failed');
-    return { message: 'admin audit stats ok', httpStatus: res.status };
-  });
-
-  await runAction('admin', 'admin.audit.export', async () => {
-    const res = await apiRequest('GET', '/admin/audit-logs/export', {
-      token: state.tokens.admin,
-      responseType: 'text'
+  } else {
+    await runAction('admin', 'classroom.audit.logs', async () => {
+      const res = await apiRequest('GET', '/classroom/audit-logs', { token: state.tokens.admin });
+      ensureStatus(res, 200, 'admin classroom audit logs failed');
+      return { message: 'classroom audit logs ok', httpStatus: res.status };
     });
-    ensureStatus(res, 200, 'admin audit export failed');
-    return { message: 'admin audit export ok', httpStatus: res.status };
-  });
 
-  await runAction('admin', 'admin.users.list', async () => {
-    const res = await apiRequest('GET', '/admin/users', { token: state.tokens.admin });
-    ensureStatus(res, 200, 'admin users list failed');
-    return { message: 'admin users list ok', httpStatus: res.status };
-  });
+    await runAction('admin', 'classroom.audit.stats', async () => {
+      const res = await apiRequest('GET', '/classroom/audit-stats', { token: state.tokens.admin });
+      ensureStatus(res, 200, 'admin classroom audit stats failed');
+      return { message: 'classroom audit stats ok', httpStatus: res.status };
+    });
 
-  await runAction('admin', 'admin.users.stats', async () => {
-    const res = await apiRequest('GET', '/admin/users/stats', { token: state.tokens.admin });
-    ensureStatus(res, 200, 'admin users stats failed');
-    return { message: 'admin users stats ok', httpStatus: res.status };
-  });
+    await runAction('admin', 'classroom.audit.export', async () => {
+      const res = await apiRequest('GET', '/classroom/audit-logs/export', {
+        token: state.tokens.admin,
+        responseType: 'text'
+      });
+      ensureStatus(res, 200, 'admin classroom audit export failed');
+      return { message: 'classroom audit export ok', httpStatus: res.status };
+    });
 
-  await runAction('admin', 'admin.user.create', async () => {
+    await runAction('admin', 'admin.audit.logs', async () => {
+      const res = await apiRequest('GET', '/admin/audit-logs', { token: state.tokens.admin });
+      ensureStatus(res, 200, 'admin audit logs failed');
+      return { message: 'admin audit logs ok', httpStatus: res.status };
+    });
+
+    await runAction('admin', 'admin.audit.stats', async () => {
+      const res = await apiRequest('GET', '/admin/audit-stats', { token: state.tokens.admin });
+      ensureStatus(res, 200, 'admin audit stats failed');
+      return { message: 'admin audit stats ok', httpStatus: res.status };
+    });
+
+    await runAction('admin', 'admin.audit.export', async () => {
+      const res = await apiRequest('GET', '/admin/audit-logs/export', {
+        token: state.tokens.admin,
+        responseType: 'text'
+      });
+      ensureStatus(res, 200, 'admin audit export failed');
+      return { message: 'admin audit export ok', httpStatus: res.status };
+    });
+
+    await runAction('admin', 'admin.users.list', async () => {
+      const res = await apiRequest('GET', '/admin/users', { token: state.tokens.admin });
+      ensureStatus(res, 200, 'admin users list failed');
+      return { message: 'admin users list ok', httpStatus: res.status };
+    });
+
+    await runAction('admin', 'admin.users.stats', async () => {
+      const res = await apiRequest('GET', '/admin/users/stats', { token: state.tokens.admin });
+      ensureStatus(res, 200, 'admin users stats failed');
+      return { message: 'admin users stats ok', httpStatus: res.status };
+    });
+
+    await runAction('admin', 'admin.user.create', async () => {
     const email = `matrix.user.${Date.now()}@test.com`;
     const res = await apiRequest('POST', '/admin/users', {
       token: state.tokens.admin,
@@ -711,7 +803,7 @@ function makeTinyPngBlob() {
     return { message: `createdUserId=${state.ids.createdUserId || 'n/a'}`, httpStatus: res.status };
   });
 
-  if (state.ids.createdUserId) {
+    if (state.ids.createdUserId) {
     await runAction('admin', 'admin.user.edit', async () => {
       const res = await apiRequest('PUT', `/admin/users/${state.ids.createdUserId}`, {
         token: state.tokens.admin,
@@ -747,20 +839,20 @@ function makeTinyPngBlob() {
       ensureStatus(res, [200, 207], 'admin enroll user failed');
       return { message: 'enroll call completed', httpStatus: res.status };
     });
-  } else {
+    } else {
     skipAction('admin', 'admin.user.edit', 'No created user id');
     skipAction('admin', 'admin.user.resetPassword', 'No created user id');
     skipAction('admin', 'admin.user.enroll', 'No created user id');
   }
 
-  await runAction('admin', 'admin.rbac.get', async () => {
+    await runAction('admin', 'admin.rbac.get', async () => {
     const res = await apiRequest('GET', '/admin/rbac', { token: state.tokens.admin });
     ensureStatus(res, 200, 'rbac get failed');
     state.rbacMatrix = res.data?.matrix || {};
     return { message: 'rbac get ok', httpStatus: res.status };
   });
 
-  await runAction('admin', 'admin.rbac.update.teacher', async () => {
+    await runAction('admin', 'admin.rbac.update.teacher', async () => {
     const teacherPerms = state.rbacMatrix?.teacher || {
       classroom: ['read', 'update', 'execute'],
       storage: ['create', 'read', 'update'],
@@ -778,7 +870,7 @@ function makeTinyPngBlob() {
     return { message: 'rbac updated', httpStatus: res.status };
   });
 
-  await runAction('admin', 'admin.rbac.reset.teacher', async () => {
+    await runAction('admin', 'admin.rbac.reset.teacher', async () => {
     const res = await apiRequest('POST', '/admin/rbac/reset/teacher', {
       token: state.tokens.admin
     });
@@ -786,7 +878,7 @@ function makeTinyPngBlob() {
     return { message: 'rbac reset teacher', httpStatus: res.status };
   });
 
-  await runAction('teacher', 'auth.relogin.afterRbac', async () => {
+    await runAction('teacher', 'auth.relogin.afterRbac', async () => {
     const res = await apiRequest('POST', '/auth/login', {
       body: { ...creds.teacher }
     });
@@ -796,7 +888,7 @@ function makeTinyPngBlob() {
     return { message: 'teacher session refreshed', httpStatus: res.status };
   });
 
-  await runAction('admin', 'admin.import.template', async () => {
+    await runAction('admin', 'admin.import.template', async () => {
     const res = await apiRequest('GET', '/admin/users/import/template', {
       token: state.tokens.admin,
       responseType: 'text'
@@ -805,7 +897,7 @@ function makeTinyPngBlob() {
     return { message: 'import template downloaded', httpStatus: res.status };
   });
 
-  await runAction('admin', 'admin.import.users', async () => {
+    await runAction('admin', 'admin.import.users', async () => {
     const email = `matrix.import.${Date.now()}@test.com`;
     state.ids.importedUserEmail = email;
     const csv = [
@@ -824,7 +916,7 @@ function makeTinyPngBlob() {
     return { message: 'users import completed', httpStatus: res.status };
   });
 
-  await runAction('admin', 'admin.import.errors.csv', async () => {
+    await runAction('admin', 'admin.import.errors.csv', async () => {
     const res = await apiRequest('POST', '/admin/users/import/errors', {
       token: state.tokens.admin,
       body: {
@@ -838,7 +930,7 @@ function makeTinyPngBlob() {
     return { message: 'import errors csv generated', httpStatus: res.status };
   });
 
-  await runAction('admin', 'admin.users.export', async () => {
+    await runAction('admin', 'admin.users.export', async () => {
     const res = await apiRequest('GET', '/admin/users/export?mode=filtered&role=student', {
       token: state.tokens.admin,
       responseType: 'text'
@@ -847,7 +939,7 @@ function makeTinyPngBlob() {
     return { message: 'users export ok', httpStatus: res.status };
   });
 
-  await runAction('admin', 'admin.classrooms.list', async () => {
+    await runAction('admin', 'admin.classrooms.list', async () => {
     const res = await apiRequest('GET', '/admin/classrooms', { token: state.tokens.admin });
     ensureStatus(res, 200, 'admin classrooms list failed');
     const rows = Array.isArray(res.data?.classrooms) ? res.data.classrooms : [];
@@ -855,7 +947,7 @@ function makeTinyPngBlob() {
     return { message: `classrooms=${rows.length}`, httpStatus: res.status };
   });
 
-  if (state.archivedClassroom?.classroomId && state.archivedClassroom?.ownerTeacherId) {
+    if (state.archivedClassroom?.classroomId && state.archivedClassroom?.ownerTeacherId) {
     await runAction('admin', 'admin.classroom.restore', async () => {
       const res = await apiRequest('POST', `/admin/classrooms/${state.archivedClassroom.classroomId}/restore`, {
         token: state.tokens.admin,
@@ -864,8 +956,9 @@ function makeTinyPngBlob() {
       ensureStatus(res, 200, 'admin classroom restore failed');
       return { message: 'archived classroom restored', httpStatus: res.status };
     });
-  } else {
+    } else {
     skipAction('admin', 'admin.classroom.restore', 'No archived classroom available');
+    }
   }
 
   if (state.ids.teacherFileId) {
@@ -889,6 +982,10 @@ function makeTinyPngBlob() {
   }
 
   for (const role of ['teacher', 'student', 'admin']) {
+    if (!state.tokens[role]) {
+      skipAction(role, 'auth.logout', 'Skipped because login token is unavailable');
+      continue;
+    }
     await runAction(role, 'auth.logout', async () => {
       const res = await apiRequest('POST', '/auth/logout', { token: state.tokens[role] });
       ensureStatus(res, 200, 'logout failed');

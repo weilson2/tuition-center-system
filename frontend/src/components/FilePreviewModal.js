@@ -107,6 +107,11 @@ function FilePreviewModal({ fileId, onClose, onDownload }) {
     return 'Text';
   };
 
+  const [zoomScale, setZoomScale] = useState(1);
+  const handleZoomIn = () => setZoomScale((prev) => Math.min(prev + 0.5, 5));
+  const handleZoomOut = () => setZoomScale((prev) => Math.max(prev - 0.5, 0.5));
+  const handleZoomReset = () => setZoomScale(1);
+
   const renderPreview = () => {
     if (loading) {
       return (
@@ -140,11 +145,30 @@ function FilePreviewModal({ fileId, onClose, onDownload }) {
     // Image preview
     if (fileType.startsWith('image/') && previewUrl) {
       return (
-        <div className="preview-image-container">
+        <div className="preview-image-container" style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10, display: 'flex', gap: '8px', background: 'rgba(255, 255, 255, 0.9)', padding: '4px', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+            <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', background: '#fff' }} onClick={handleZoomOut} title="Zoom Out">
+              <i className="fas fa-search-minus"></i>
+            </button>
+            <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', background: '#fff' }} onClick={handleZoomReset} title="Reset Zoom">
+              {Math.round(zoomScale * 100)}%
+            </button>
+            <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', background: '#fff' }} onClick={handleZoomIn} title="Zoom In">
+              <i className="fas fa-search-plus"></i>
+            </button>
+          </div>
           <img 
             src={previewUrl} 
             alt={fileDetails.original_filename}
             className="preview-image"
+            style={{
+              transform: `scale(${zoomScale})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.2s ease',
+              cursor: zoomScale > 1 ? 'grab' : 'default',
+              maxWidth: '100%',
+              maxHeight: zoomScale === 1 ? '100%' : 'none'
+            }}
           />
         </div>
       );

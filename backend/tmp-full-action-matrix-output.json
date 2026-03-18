@@ -2,12 +2,12 @@
   "baseUrl": "http://localhost:5000/api",
   "requestTimeoutMs": 25000,
   "actionTimeoutMs": 35000,
-  "executedAt": "2026-03-07T09:26:59.537Z",
+  "executedAt": "2026-03-12T12:12:23.962Z",
   "totals": {
-    "total": 76,
-    "pass": 76,
-    "fail": 0,
-    "skip": 0
+    "total": 70,
+    "pass": 26,
+    "fail": 1,
+    "skip": 43
   },
   "results": [
     {
@@ -16,55 +16,55 @@
       "status": "PASS",
       "message": "health ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:19.931Z"
+      "timestamp": "2026-03-12T12:11:30.352Z"
     },
     {
       "role": "teacher",
       "action": "auth.login",
-      "status": "PASS",
-      "message": "login ok (teacher@test.com)",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:23.670Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:32.475Z"
     },
     {
       "role": "teacher",
       "action": "auth.me",
-      "status": "PASS",
-      "message": "auth.me ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:24.963Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:32.475Z"
     },
     {
       "role": "teacher",
       "action": "profile.me",
-      "status": "PASS",
-      "message": "profile.me ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:26.020Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:32.475Z"
     },
     {
       "role": "student",
       "action": "auth.login",
-      "status": "PASS",
-      "message": "login ok (student@test.com)",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:28.150Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:33.002Z"
     },
     {
       "role": "student",
       "action": "auth.me",
-      "status": "PASS",
-      "message": "auth.me ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:29.441Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:33.002Z"
     },
     {
       "role": "student",
       "action": "profile.me",
-      "status": "PASS",
-      "message": "profile.me ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:30.463Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:33.002Z"
     },
     {
       "role": "admin",
@@ -72,7 +72,7 @@
       "status": "PASS",
       "message": "login ok (admin@test.com)",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:32.612Z"
+      "timestamp": "2026-03-12T12:11:35.142Z"
     },
     {
       "role": "admin",
@@ -80,7 +80,7 @@
       "status": "PASS",
       "message": "auth.me ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:33.918Z"
+      "timestamp": "2026-03-12T12:11:36.444Z"
     },
     {
       "role": "admin",
@@ -88,39 +88,39 @@
       "status": "PASS",
       "message": "profile.me ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:34.981Z"
+      "timestamp": "2026-03-12T12:11:37.479Z"
     },
     {
       "role": "teacher",
       "action": "profile.phone.update",
-      "status": "PASS",
-      "message": "phone updated",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:36.538Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:37.481Z"
     },
     {
       "role": "teacher",
       "action": "profile.age.update",
-      "status": "PASS",
-      "message": "age updated",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:37.862Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:37.484Z"
     },
     {
       "role": "teacher",
       "action": "profile.teacherTitle.update",
-      "status": "PASS",
-      "message": "teacher title updated",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:39.175Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:37.486Z"
     },
     {
       "role": "student",
       "action": "profile.teacherTitle.forbidden",
-      "status": "PASS",
-      "message": "expected denial confirmed",
-      "httpStatus": 403,
-      "timestamp": "2026-03-07T09:24:39.927Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:37.489Z"
     },
     {
       "role": "teacher",
@@ -128,279 +128,247 @@
       "status": "PASS",
       "message": "invalid-current protection works",
       "httpStatus": 401,
-      "timestamp": "2026-03-07T09:24:41.334Z"
+      "timestamp": "2026-03-12T12:11:37.491Z"
     },
     {
       "role": "teacher",
       "action": "profile.picture.upload",
-      "status": "PASS",
-      "message": "profile picture uploaded",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:44.291Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:37.496Z"
     },
     {
       "role": "teacher",
       "action": "profile.picture.delete",
-      "status": "PASS",
-      "message": "profile picture deleted",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:46.130Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:37.498Z"
     },
     {
       "role": "public",
       "action": "passwordReset.request",
       "status": "PASS",
-      "message": "request ok + token returned (test mode)",
+      "message": "request ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:46.914Z"
+      "timestamp": "2026-03-12T12:11:37.999Z"
     },
     {
       "role": "public",
       "action": "passwordReset.verify",
-      "status": "PASS",
-      "message": "reset token verified",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:47.176Z"
+      "status": "SKIP",
+      "message": "No reset token returned by request endpoint",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:37.999Z"
     },
     {
       "role": "teacher",
       "action": "classroom.state.get",
-      "status": "PASS",
-      "message": "teacher state fetched",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:50.073Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.001Z"
     },
     {
       "role": "teacher",
       "action": "classroom.state.save",
-      "status": "PASS",
-      "message": "teacher state saved",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:51.637Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.003Z"
     },
     {
       "role": "student",
       "action": "classroom.join",
-      "status": "PASS",
-      "message": "joined class",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:54.243Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.006Z"
     },
     {
       "role": "student",
       "action": "classroom.classes.get",
-      "status": "PASS",
-      "message": "classes=1",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:56.382Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.007Z"
     },
     {
       "role": "teacher",
       "action": "classroom.announcement.post",
-      "status": "PASS",
-      "message": "announcement posted",
-      "httpStatus": 201,
-      "timestamp": "2026-03-07T09:24:57.955Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.008Z"
     },
     {
       "role": "student",
       "action": "classroom.announcement.get",
-      "status": "PASS",
-      "message": "announcements fetched",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:24:59.316Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.009Z"
     },
     {
       "role": "teacher",
       "action": "storage.quota",
-      "status": "PASS",
-      "message": "quota ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:00.857Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.011Z"
     },
     {
       "role": "teacher",
       "action": "storage.folders.list",
-      "status": "PASS",
-      "message": "folders listed",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:01.920Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.012Z"
     },
     {
       "role": "teacher",
       "action": "storage.folder.create",
-      "status": "PASS",
-      "message": "folderId=27",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:03.475Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.013Z"
     },
     {
       "role": "teacher",
       "action": "storage.file.upload",
-      "status": "PASS",
-      "message": "fileId=77",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:08.715Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.015Z"
     },
     {
       "role": "teacher",
       "action": "storage.files.list",
-      "status": "PASS",
-      "message": "files=16",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:10.111Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.file.details",
-      "status": "PASS",
-      "message": "details ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:11.673Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.file.rename",
-      "status": "PASS",
-      "message": "renamed",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:13.962Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.file.updateContent",
-      "status": "PASS",
-      "message": "content updated",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:16.504Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.file.preview",
-      "status": "PASS",
-      "message": "preview ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:18.289Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.file.download",
-      "status": "PASS",
-      "message": "download ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:19.496Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.folder.addFile",
-      "status": "PASS",
-      "message": "file added to folder",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:21.975Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.folder.removeFile",
-      "status": "PASS",
-      "message": "file removed from folder",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:24.139Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "users.list",
-      "status": "PASS",
-      "message": "users=11",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:25.504Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.file.share",
-      "status": "PASS",
-      "message": "shared",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:28.831Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.sharingHistory",
-      "status": "PASS",
-      "message": "history=1",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:30.218Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "student",
       "action": "storage.sharedFiles.list",
-      "status": "PASS",
-      "message": "shared files listed",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:31.596Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "student",
       "action": "storage.notifications.list",
-      "status": "PASS",
-      "message": "notifications=13",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:32.690Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "student",
       "action": "storage.notification.markRead",
-      "status": "PASS",
-      "message": "notification read",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:34.093Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "teacher",
       "action": "storage.share.revoke",
-      "status": "PASS",
-      "message": "sharing revoked",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:36.290Z"
+      "status": "SKIP",
+      "message": "No file id",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:11:38.017Z"
     },
     {
       "role": "student",
       "action": "storage.file.upload.forSubmission",
-      "status": "PASS",
-      "message": "fileId=78",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:39.813Z"
-    },
-    {
-      "role": "student",
-      "action": "classroom.assignment.submit",
-      "status": "PASS",
-      "message": "assignment submitted",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:43.057Z"
-    },
-    {
-      "role": "teacher",
-      "action": "classroom.submission.discover",
-      "status": "PASS",
-      "message": "submissionId=41",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:45.835Z"
-    },
-    {
-      "role": "teacher",
-      "action": "classroom.submission.grade",
-      "status": "PASS",
-      "message": "graded",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:48.508Z"
-    },
-    {
-      "role": "student",
-      "action": "classroom.assignment.unsubmit.forbiddenAfterGrade",
-      "status": "PASS",
-      "message": "graded unsubmit blocked as expected",
-      "httpStatus": 400,
-      "timestamp": "2026-03-07T09:25:49.604Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:11:38.019Z"
     },
     {
       "role": "admin",
@@ -408,7 +376,7 @@
       "status": "PASS",
       "message": "classroom audit logs ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:50.988Z"
+      "timestamp": "2026-03-12T12:11:39.570Z"
     },
     {
       "role": "admin",
@@ -416,7 +384,7 @@
       "status": "PASS",
       "message": "classroom audit stats ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:52.115Z"
+      "timestamp": "2026-03-12T12:11:40.610Z"
     },
     {
       "role": "admin",
@@ -424,7 +392,7 @@
       "status": "PASS",
       "message": "classroom audit export ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:56.506Z"
+      "timestamp": "2026-03-12T12:11:41.898Z"
     },
     {
       "role": "admin",
@@ -432,7 +400,7 @@
       "status": "PASS",
       "message": "admin audit logs ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:25:58.212Z"
+      "timestamp": "2026-03-12T12:11:43.237Z"
     },
     {
       "role": "admin",
@@ -440,7 +408,7 @@
       "status": "PASS",
       "message": "admin audit stats ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:01.858Z"
+      "timestamp": "2026-03-12T12:11:46.631Z"
     },
     {
       "role": "admin",
@@ -448,7 +416,7 @@
       "status": "PASS",
       "message": "admin audit export ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:06.741Z"
+      "timestamp": "2026-03-12T12:11:48.201Z"
     },
     {
       "role": "admin",
@@ -456,7 +424,7 @@
       "status": "PASS",
       "message": "admin users list ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:09.246Z"
+      "timestamp": "2026-03-12T12:11:50.529Z"
     },
     {
       "role": "admin",
@@ -464,15 +432,15 @@
       "status": "PASS",
       "message": "admin users stats ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:10.334Z"
+      "timestamp": "2026-03-12T12:11:51.569Z"
     },
     {
       "role": "admin",
       "action": "admin.user.create",
       "status": "PASS",
-      "message": "createdUserId=17",
+      "message": "createdUserId=58",
       "httpStatus": 201,
-      "timestamp": "2026-03-07T09:26:12.615Z"
+      "timestamp": "2026-03-12T12:11:53.703Z"
     },
     {
       "role": "admin",
@@ -480,7 +448,7 @@
       "status": "PASS",
       "message": "user edited",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:15.143Z"
+      "timestamp": "2026-03-12T12:11:56.849Z"
     },
     {
       "role": "admin",
@@ -488,15 +456,15 @@
       "status": "PASS",
       "message": "password reset triggered",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:19.976Z"
+      "timestamp": "2026-03-12T12:12:01.809Z"
     },
     {
       "role": "admin",
       "action": "admin.user.enroll",
-      "status": "PASS",
-      "message": "enroll call completed",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:22.454Z"
+      "status": "FAIL",
+      "message": "Classroom not found for enrollment",
+      "httpStatus": 404,
+      "timestamp": "2026-03-12T12:12:03.610Z"
     },
     {
       "role": "admin",
@@ -504,7 +472,7 @@
       "status": "PASS",
       "message": "rbac get ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:23.832Z"
+      "timestamp": "2026-03-12T12:12:04.935Z"
     },
     {
       "role": "admin",
@@ -512,7 +480,7 @@
       "status": "PASS",
       "message": "rbac updated",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:30.368Z"
+      "timestamp": "2026-03-12T12:12:10.973Z"
     },
     {
       "role": "admin",
@@ -520,15 +488,15 @@
       "status": "PASS",
       "message": "rbac reset teacher",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:34.745Z"
+      "timestamp": "2026-03-12T12:12:15.087Z"
     },
     {
       "role": "teacher",
       "action": "auth.relogin.afterRbac",
-      "status": "PASS",
-      "message": "teacher session refreshed",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:37.022Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": 401,
+      "timestamp": "2026-03-12T12:12:15.588Z"
     },
     {
       "role": "admin",
@@ -536,7 +504,7 @@
       "status": "PASS",
       "message": "import template downloaded",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:37.855Z"
+      "timestamp": "2026-03-12T12:12:16.384Z"
     },
     {
       "role": "admin",
@@ -544,7 +512,7 @@
       "status": "PASS",
       "message": "users import completed",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:40.546Z"
+      "timestamp": "2026-03-12T12:12:19.002Z"
     },
     {
       "role": "admin",
@@ -552,7 +520,7 @@
       "status": "PASS",
       "message": "import errors csv generated",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:41.349Z"
+      "timestamp": "2026-03-12T12:12:19.784Z"
     },
     {
       "role": "admin",
@@ -560,55 +528,39 @@
       "status": "PASS",
       "message": "users export ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:43.031Z"
+      "timestamp": "2026-03-12T12:12:21.586Z"
     },
     {
       "role": "admin",
       "action": "admin.classrooms.list",
       "status": "PASS",
-      "message": "classrooms=7",
+      "message": "classrooms=2",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:44.738Z"
+      "timestamp": "2026-03-12T12:12:22.651Z"
     },
     {
       "role": "admin",
       "action": "admin.classroom.restore",
-      "status": "PASS",
-      "message": "archived classroom restored",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:46.437Z"
-    },
-    {
-      "role": "teacher",
-      "action": "storage.file.delete",
-      "status": "PASS",
-      "message": "file deleted",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:52.499Z"
-    },
-    {
-      "role": "teacher",
-      "action": "storage.folder.delete",
-      "status": "PASS",
-      "message": "folder deleted",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:54.979Z"
+      "status": "SKIP",
+      "message": "No archived classroom available",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:12:22.651Z"
     },
     {
       "role": "teacher",
       "action": "auth.logout",
-      "status": "PASS",
-      "message": "logout ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:56.313Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:12:22.651Z"
     },
     {
       "role": "student",
       "action": "auth.logout",
-      "status": "PASS",
-      "message": "logout ok",
-      "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:57.690Z"
+      "status": "SKIP",
+      "message": "Skipped because login token is unavailable",
+      "httpStatus": null,
+      "timestamp": "2026-03-12T12:12:22.651Z"
     },
     {
       "role": "admin",
@@ -616,7 +568,7 @@
       "status": "PASS",
       "message": "logout ok",
       "httpStatus": 200,
-      "timestamp": "2026-03-07T09:26:59.536Z"
+      "timestamp": "2026-03-12T12:12:23.961Z"
     }
   ]
 }

@@ -3,6 +3,14 @@ import { classroomAPI } from '../services/api';
 import api from '../services/api';
 import '../styles/StudentClassroomTab.css';
 
+function formatLocalDate(dateObj) {
+  if (!dateObj) return '';
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // eslint-disable-next-line no-unused-vars
 const initialEnrolledClasses = [
   {
@@ -861,7 +869,11 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       )) || enrolledClasses[0] || null
       : null;
 
-    const targetClass = classFromId || classFromName || classFromAssignment || classFromMaterial || gradingDefaultClass;
+    const attendanceDefaultClass = navigationIntent.detailTab === 'attendance'
+      ? enrolledClasses.find((classroom) => Number(classroom?.attendance?.sessions || 0) > 0) || enrolledClasses[0] || null
+      : null;
+
+    const targetClass = classFromId || classFromName || classFromAssignment || classFromMaterial || gradingDefaultClass || attendanceDefaultClass;
     let handledIntent = false;
 
     if (targetClass) {
@@ -874,6 +886,9 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       handledIntent = true;
     } else if (navigationIntent.detailTab === 'materials') {
       setDetailTab('materials');
+      handledIntent = true;
+    } else if (navigationIntent.detailTab === 'attendance') {
+      setDetailTab('attendance');
       handledIntent = true;
     }
 
@@ -1016,6 +1031,101 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
     };
   }, [selectedClass]);
 
+  const selectedAttendanceSummary = useMemo(() => {
+    const attendance = selectedClass?.attendance;
+    const sessions = Number(attendance?.sessions || 0);
+    const present = Number(attendance?.present || 0);
+    const absent = Number(attendance?.absent || 0);
+    const rate = Number(attendance?.rate);
+
+    return {
+      sessions: Number.isFinite(sessions) ? sessions : 0,
+      present: Number.isFinite(present) ? present : 0,
+      absent: Number.isFinite(absent) ? absent : 0,
+      rateLabel: Number.isFinite(rate) ? `${rate.toFixed(1)}%` : '--'
+    };
+  }, [selectedClass]);
+
+  const selectedAttendanceHistory = useMemo(() => {
+    const historyRows = Array.isArray(selectedClass?.attendance?.history) ? selectedClass.attendance.history : [];
+
+    return historyRows
+      .map((row) => {
+        const rawDate = String(row?.date || '').trim();
+        if (!rawDate) {
+          return null;
+        }
+
+        const parsedDate = parseUploadedDate(rawDate);
+        const sortableTimestamp = parsedDate ? parsedDate.getTime() : 0;
+        const displayDate = parsedDate ? formatLocalDate(parsedDate) : rawDate;
+        const takenAtRaw = row?.takenAt || row?.updatedAt || '';
+        const parsedTakenAt = parseUploadedDate(takenAtRaw);
+        const takenAtLabel = parsedTakenAt
+          ? parsedTakenAt.toLocaleString('en-MY', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          })
+          : (takenAtRaw ? String(takenAtRaw) : 'Unknown time');
+        const takenByLabel = String(row?.takenBy || row?.updatedBy || 'Teacher');
+
+        const isPresent = Boolean(row?.present);
+        return {
+          date: displayDate,
+          sortableTimestamp,
+          status: isPresent ? 'Present' : 'Absent',
+          isPresent,
+          takenBy: takenByLabel,
+          takenAt: takenAtLabel
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        if (right.sortableTimestamp !== left.sortableTimestamp) {
+          return right.sortableTimestamp - left.sortableTimestamp;
+        }
+        return String(right.date).localeCompare(String(left.date));
+      });
+  }, [selectedClass]);
+
+  const selectedAttendanceHistoryRows = useMemo(() => {
+    if (selectedAttendanceHistory.length > 0) {
+      return selectedAttendanceHistory;
+    }
+
+    const presentCount = Number(selectedAttendanceSummary.present || 0);
+    const absentCount = Number(selectedAttendanceSummary.absent || 0);
+    const fallbackRows = [];
+
+    for (let index = 0; index < presentCount; index += 1) {
+      fallbackRows.push({
+        date: `Session ${index + 1}`,
+        status: 'Present',
+        isPresent: true,
+        isEstimated: true,
+        takenBy: 'Teacher',
+        takenAt: 'Unknown time'
+      });
+    }
+
+    for (let index = 0; index < absentCount; index += 1) {
+      fallbackRows.push({
+        date: `Session ${presentCount + index + 1}`,
+        status: 'Absent',
+        isPresent: false,
+        isEstimated: true,
+        takenBy: 'Teacher',
+        takenAt: 'Unknown time'
+      });
+    }
+
+    return fallbackRows;
+  }, [selectedAttendanceHistory, selectedAttendanceSummary.absent, selectedAttendanceSummary.present]);
+
   const openClassDetail = (classId) => {
     setSelectedClassId(classId);
     setDetailTab('materials');
@@ -1111,7 +1221,7 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       return;
     }
 
-    let submissionDate = new Date().toISOString().slice(0, 10);
+    let submissionDate = formatLocalDate(new Date());
     let uploadedFileId = null;
     let normalizedFileName = fileName;
     let normalizedFileSize = fileSize;
@@ -1144,7 +1254,7 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
       const savedSubmission = submitResponse?.submission;
       if (savedSubmission?.submittedAt) {
-        submissionDate = new Date(savedSubmission.submittedAt).toISOString().slice(0, 10);
+        submissionDate = formatLocalDate(new Date(savedSubmission.submittedAt));
       }
     } catch (error) {
       console.error('Failed to submit assignment:', error);
@@ -1367,6 +1477,10 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
               <i className="fas fa-list-check"></i>
               Assignments ({selectedClass.assignments.length})
             </button>
+            <button className={detailTab === 'attendance' ? 'active' : ''} onClick={() => setDetailTab('attendance')}>
+              <i className="fas fa-clipboard-check"></i>
+              Attendance
+            </button>
           </div>
 
           {detailTab === 'materials' && (
@@ -1500,6 +1614,62 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
                   </article>
                 );
               })}
+            </div>
+          )}
+
+          {detailTab === 'attendance' && (
+            <div className="student-attendance-panel">
+              <div className="student-attendance-summary-grid">
+                <div className="sessions">
+                  <strong>{selectedAttendanceSummary.sessions}</strong>
+                  <span>Total Sessions</span>
+                </div>
+                <div className="present">
+                  <strong>{selectedAttendanceSummary.present}</strong>
+                  <span>Present</span>
+                </div>
+                <div className="absent">
+                  <strong>{selectedAttendanceSummary.absent}</strong>
+                  <span>Absent</span>
+                </div>
+                <div className="rate">
+                  <strong>{selectedAttendanceSummary.rateLabel}</strong>
+                  <span>Attendance Rate</span>
+                </div>
+              </div>
+
+              <div className="student-attendance-history-list">
+                {selectedAttendanceHistoryRows.length === 0 && (
+                  <div className="student-attendance-history-row empty">
+                    <div className="student-attendance-history-meta">
+                      <strong>No attendance records yet</strong>
+                      <p>Your attendance record will appear once attendance has been taken.</p>
+                    </div>
+                  </div>
+                )}
+
+                {selectedAttendanceHistory.length === 0 && selectedAttendanceHistoryRows.length > 0 && (
+                  <div className="student-attendance-history-row empty">
+                    <div className="student-attendance-history-meta">
+                      <strong>Showing summary-based records</strong>
+                      <p>Exact attendance dates are not available yet.</p>
+                    </div>
+                  </div>
+                )}
+
+                {selectedAttendanceHistoryRows.map((row) => (
+                  <div key={`${selectedClass.id}-${row.date}`} className="student-attendance-history-row">
+                    <div className="student-attendance-history-meta">
+                      <strong>{row.date}</strong>
+                      <p>{row.isEstimated ? 'Class session attendance (summary)' : 'Class session attendance'}</p>
+                      <p>Taken by {row.takenBy} at {row.takenAt}</p>
+                    </div>
+                    <span className={`student-attendance-status ${row.isPresent ? 'present' : 'absent'}`}>
+                      {row.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

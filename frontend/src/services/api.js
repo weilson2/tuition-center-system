@@ -167,6 +167,11 @@ export const classroomAPI = {
     return response.data;
   },
 
+  checkScheduleConflict: async (studentId, classroomId) => {
+    const response = await api.post('/classroom/check-schedule-conflict', { studentId, classroomId });
+    return response.data;
+  },
+
   getAuditLogs: async (params = {}) => {
     const response = await api.get('/classroom/audit-logs', { params });
     return response.data;

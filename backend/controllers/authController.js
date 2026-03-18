@@ -88,8 +88,7 @@ const minutesRemaining = Math.ceil((lockUntil - now) / 60000);
         userAgent
       });
       return res.status(403).json({
-        error: 'Account is inactive or suspended',
-        attemptsRemaining: 5 - user.failed_login_attempts
+        error: 'Account is inactive or suspended'
       });
     }
 

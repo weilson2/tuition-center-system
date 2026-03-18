@@ -12,7 +12,10 @@ function formatDate(value) {
   if (!date) {
     return '-';
   }
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatDateTime(value) {
@@ -21,13 +24,15 @@ function formatDateTime(value) {
     return '-';
   }
 
-  const datePart = date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
   const timePart = date.toLocaleTimeString('en-MY', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false
   });
-  return `${datePart} ${timePart}`;
+  return `${year}-${month}-${day} ${timePart}`;
 }
 
 function getDownloadFileName(headers, fallbackName = 'download') {
@@ -151,12 +156,20 @@ function StudentDashboardHome({ user, onOpenClassroom }) {
   };
 
   const latestAnnouncements = useMemo(() => {
-    const grouped = Object.values(announcementsByClassroom || {});
+    const enrolledClassIds = new Set(studentClasses.map((c) => Number(c.classroomId || c.id)));
+    if (enrolledClassIds.size === 0) {
+      return [];
+    }
+
+    const grouped = Object.entries(announcementsByClassroom || {})
+      .filter(([classId]) => enrolledClassIds.has(Number(classId)))
+      .map(([, items]) => items);
+
     const merged = grouped.flatMap((items) => (Array.isArray(items) ? items : []));
     return merged
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
       .slice(0, 1);
-  }, [announcementsByClassroom]);
+  }, [announcementsByClassroom, studentClasses]);
 
   const allAssignments = useMemo(
     () => studentClasses.flatMap((classroom) =>
@@ -320,6 +333,14 @@ function StudentDashboardHome({ user, onOpenClassroom }) {
     { id: 'storage', label: 'Storage Used', value: `${storageProgress}%`, icon: 'fa-database', tone: 'purple', progress: storageProgress }
   ];
 
+  const handleAttendanceCardClick = () => {
+    onOpenClassroom?.({
+      subTab: 'my-classes',
+      detailTab: 'attendance',
+      action: 'view-attendance'
+    });
+  };
+
   const handleDeadlineSubmit = (item) => {
     onOpenClassroom?.({
       subTab: 'my-classes',
@@ -458,7 +479,20 @@ function StudentDashboardHome({ user, onOpenClassroom }) {
 
       <div className="student-stats-grid">
         {statCards.map((card) => (
-          <div key={card.id} className={`student-stat-card ${card.tone}`}>
+          <div
+            key={card.id}
+            className={`student-stat-card ${card.tone} ${card.id === 'attendance' ? 'clickable' : ''}`}
+            role={card.id === 'attendance' ? 'button' : undefined}
+            tabIndex={card.id === 'attendance' ? 0 : undefined}
+            onClick={card.id === 'attendance' ? handleAttendanceCardClick : undefined}
+            onKeyDown={card.id === 'attendance' ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                handleAttendanceCardClick();
+              }
+            } : undefined}
+            title={card.id === 'attendance' ? 'Open my attendance record' : undefined}
+          >
             <p>{card.label}</p>
             <h3>{card.value}</h3>
             <span className="student-stat-icon"><i className={`fas ${card.icon}`}></i></span>

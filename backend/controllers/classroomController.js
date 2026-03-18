@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { checkUserScheduleConflict } = require('../utils/scheduleMatcher');
 
 let ensuredTables = false;
 
@@ -176,6 +177,22 @@ function normalizeTeacherState(raw) {
     attendanceDetailByClassroom: source.attendanceDetailByClassroom && typeof source.attendanceDetailByClassroom === 'object' ? source.attendanceDetailByClassroom : {},
     archivedClassrooms: Array.isArray(source.archivedClassrooms) ? source.archivedClassrooms : []
   };
+}
+
+function getUniqueStudentCountFromRoster(roster) {
+  if (!Array.isArray(roster)) {
+    return 0;
+  }
+
+  const studentIds = new Set();
+  roster.forEach((entry) => {
+    const studentId = Number(entry?.studentId || entry?.userId || entry?.id);
+    if (Number.isInteger(studentId) && studentId > 0) {
+      studentIds.add(studentId);
+    }
+  });
+
+  return studentIds.size;
 }
 
 const ARCHIVED_CLASS_RETENTION_DAYS = 90;
@@ -985,6 +1002,7 @@ async function saveTeacherState(req, res) {
     }
 
     const teacherUserId = req.user.userId;
+    const requestOperationType = String(req.body?.operationType || '').trim();
     const rawState = req.body?.state;
     const incomingState = normalizeTeacherState(rawState);
 
@@ -1085,6 +1103,76 @@ async function saveTeacherState(req, res) {
       attendanceDetailByClassroom: pickClassroomMap(incomingState.attendanceDetailByClassroom, existingState.attendanceDetailByClassroom),
       archivedClassrooms: Array.isArray(existingState.archivedClassrooms) ? existingState.archivedClassrooms : []
     };
+
+    if (requestOperationType === 'student_list_managed') {
+      for (const classroom of normalizedFinalOwnedClassrooms) {
+        const classroomId = Number(classroom?.classroomId);
+        if (!Number.isInteger(classroomId) || classroomId <= 0) {
+          continue;
+        }
+
+        const configuredMaximumCapacity = Number.parseInt(classroom?.maximumCapacity, 10);
+        const maximumCapacity = Number.isInteger(configuredMaximumCapacity) && configuredMaximumCapacity > 0
+          ? configuredMaximumCapacity
+          : null;
+
+        if (!Number.isInteger(maximumCapacity)) {
+          continue;
+        }
+
+        const rosterKey = String(classroomId);
+        const incomingRoster = state.studentsByClassroom?.[rosterKey] || state.studentsByClassroom?.[classroomId] || [];
+        const existingRoster = existingState.studentsByClassroom?.[rosterKey] || existingState.studentsByClassroom?.[classroomId] || [];
+
+        const incomingCount = getUniqueStudentCountFromRoster(incomingRoster);
+        const existingCount = getUniqueStudentCountFromRoster(existingRoster);
+        const rosterChanged = JSON.stringify(incomingRoster || []) !== JSON.stringify(existingRoster || []);
+
+        if (rosterChanged && incomingCount > maximumCapacity && incomingCount > existingCount) {
+          return res.status(409).json({
+            error: `Classroom \"${String(classroom?.classroomName || classroom?.title || classroomId)}\" is full (${maximumCapacity} students max)`
+          });
+        }
+
+        if (rosterChanged) {
+          await ensureEnrollmentTable();
+          
+          const incomingIds = incomingRoster
+            .map(s => Number(s?.studentId || s?.userId || s?.id))
+            .filter(id => Number.isInteger(id) && id > 0);
+          
+          const existingIds = existingRoster
+            .map(s => Number(s?.studentId || s?.userId || s?.id))
+            .filter(id => Number.isInteger(id) && id > 0);
+
+          const removedIds = existingIds.filter(id => !incomingIds.includes(id));
+          const addedIds = incomingIds.filter(id => !existingIds.includes(id));
+
+          if (removedIds.length > 0) {
+            await pool.query(
+              `UPDATE user_enrollments 
+               SET enrollment_status = 'inactive'
+               WHERE target_type = 'classroom' 
+                 AND target_id = $1 
+                 AND user_id = ANY($2::int[])`,
+              [classroomId, removedIds]
+            );
+          }
+
+          if (addedIds.length > 0) {
+            for (const newStudentId of addedIds) {
+              await pool.query(
+                `INSERT INTO user_enrollments (user_id, target_type, target_id, enrollment_status, enrolled_at, enrolled_by)
+                 VALUES ($1, 'classroom', $2, 'active', CURRENT_TIMESTAMP, $3)
+                 ON CONFLICT (user_id, target_type, target_id) DO UPDATE 
+                 SET enrollment_status = 'active', enrolled_at = CURRENT_TIMESTAMP`,
+                [newStudentId, classroomId, teacherUserId]
+              );
+            }
+          }
+        }
+      }
+    }
 
     syncArchivedClassroomFolder(
       state,
@@ -1194,7 +1282,7 @@ async function saveTeacherState(req, res) {
         );
       }
     }
-    const operationType = String(req.body?.operationType || '').trim();
+    const operationType = requestOperationType;
     const operationLabel = String(req.body?.operationLabel || '').trim();
     const target = String(req.body?.target || '').trim();
     const targetType = String(req.body?.targetType || '').trim();
@@ -1365,6 +1453,9 @@ async function getStudentClasses(req, res) {
 
         const rawMaterials = state.materialsByClassroom?.[classId] || state.materialsByClassroom?.[String(classId)] || [];
         const rawAssignments = state.assignmentsByClassroom?.[classId] || state.assignmentsByClassroom?.[String(classId)] || [];
+        const attendanceRecordsByClassroom = state.attendanceRecordsByClassroom?.[classId]
+          || state.attendanceRecordsByClassroom?.[String(classId)]
+          || {};
         const attendanceDetailByClassroom = state.attendanceDetailByClassroom?.[classId]
           || state.attendanceDetailByClassroom?.[String(classId)]
           || {};
@@ -1456,6 +1547,34 @@ async function getStudentClasses(req, res) {
         });
 
         const attendanceDates = Object.keys(attendanceDetailByClassroom || {});
+        const attendanceHistory = attendanceDates
+          .reduce((rows, dateKey) => {
+            const statusMap = attendanceDetailByClassroom?.[dateKey];
+            if (!statusMap || typeof statusMap !== 'object') {
+              return rows;
+            }
+
+            const hasStudentRecord = Object.prototype.hasOwnProperty.call(statusMap, studentUserId)
+              || Object.prototype.hasOwnProperty.call(statusMap, String(studentUserId));
+
+            if (!hasStudentRecord) {
+              return rows;
+            }
+
+            const rawValue = statusMap[studentUserId] ?? statusMap[String(studentUserId)];
+            const recordMeta = attendanceRecordsByClassroom?.[dateKey] || {};
+            rows.push({
+              date: String(dateKey),
+              present: Boolean(rawValue),
+              takenBy: String(recordMeta.recordedByName || recordMeta.updatedByName || teacherName || 'Teacher'),
+              takenAt: recordMeta.recordedAt || recordMeta.updatedAt || null,
+              updatedBy: recordMeta.updatedByName || null,
+              updatedAt: recordMeta.updatedAt || null
+            });
+            return rows;
+          }, [])
+          .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
+
         const attendanceStats = attendanceDates.reduce((summary, dateKey) => {
           const statusMap = attendanceDetailByClassroom?.[dateKey];
           if (!statusMap || typeof statusMap !== 'object') {
@@ -1497,7 +1616,8 @@ async function getStudentClasses(req, res) {
             sessions: attendanceStats.sessions,
             present: attendanceStats.present,
             absent: attendanceStats.absent,
-            rate: attendanceRate
+            rate: attendanceRate,
+            history: attendanceHistory
           },
           materials,
           assignments
@@ -1699,62 +1819,7 @@ async function submitStudentAssignment(req, res) {
       [studentUserId, resolvedClassroomId, assignmentId, fileId, resolvedFileName, resolvedFileSize || null, comment || null]
     );
 
-    try {
-      const teacherStateRows = await pool.query(
-        `SELECT teacher_user_id, state_json
-         FROM teacher_classroom_states`
-      );
-
-      const recipientTeacherIds = new Set();
-
-      for (const stateRow of teacherStateRows.rows || []) {
-        const stateTeacherUserId = Number(stateRow?.teacher_user_id);
-        if (!Number.isInteger(stateTeacherUserId) || stateTeacherUserId <= 0) {
-          continue;
-        }
-
-        const state = normalizeTeacherState(stateRow?.state_json);
-        const classrooms = Array.isArray(state.classrooms) ? state.classrooms : [];
-        const matchedClassroom = classrooms.find((classroom) => {
-          const classroomIdCandidate = toPositiveIntegerFromCandidates(classroom?.classroomId, classroom?.id);
-          return classroomIdCandidate === resolvedClassroomId;
-        });
-
-        if (!matchedClassroom) {
-          continue;
-        }
-
-        const ownerTeacherId = toPositiveIntegerFromCandidates(matchedClassroom?.ownerTeacherId, stateTeacherUserId);
-        if (ownerTeacherId === stateTeacherUserId) {
-          recipientTeacherIds.add(stateTeacherUserId);
-        }
-
-        const coTeachers = normalizeClassroomCoTeachers(matchedClassroom?.coTeachers);
-        coTeachers.forEach((coTeacher) => {
-          if (normalizeTeacherAccessRole(coTeacher?.accessRole) !== 'teacher') {
-            return;
-          }
-
-          const coTeacherId = toPositiveIntegerFromCandidates(coTeacher?.teacherUserId, coTeacher?.userId, coTeacher?.id);
-          if (coTeacherId) {
-            recipientTeacherIds.add(coTeacherId);
-          }
-        });
-      }
-
-      const recipientList = Array.from(recipientTeacherIds.values());
-      for (const recipientTeacherId of recipientList) {
-        await pool.query(
-          `INSERT INTO file_sharings (file_id, sharer_user_id, recipient_user_id, shared_at, is_active)
-           VALUES ($1, $2, $3, CURRENT_TIMESTAMP, true)
-           ON CONFLICT (file_id, sharer_user_id, recipient_user_id)
-           DO UPDATE SET is_active = true, shared_at = CURRENT_TIMESTAMP`,
-          [fileId, studentUserId, recipientTeacherId]
-        );
-      }
-    } catch (shareError) {
-      console.warn('Auto-share assignment submission with teacher failed:', shareError?.message || shareError);
-    }
+    // Auto-share assignment submission to teachers personal storage is disabled as requested by user.
 
     await appendClassroomLog({
       actorUserId: studentUserId,
@@ -2079,6 +2144,11 @@ async function joinClassByCode(req, res) {
       return res.status(400).json({ error: 'Matched classroom has invalid id' });
     }
 
+    const configuredMaximumCapacity = Number.parseInt(matchedClassroom.classroom.maximumCapacity, 10);
+    const maximumCapacity = Number.isInteger(configuredMaximumCapacity) && configuredMaximumCapacity > 0
+      ? configuredMaximumCapacity
+      : null;
+
     const studentProfileResult = await pool.query(
       'SELECT student_level FROM users WHERE user_id = $1 LIMIT 1',
       [studentUserId]
@@ -2092,15 +2162,80 @@ async function joinClassByCode(req, res) {
       });
     }
 
-    await pool.query(
-      `INSERT INTO user_enrollments (user_id, target_type, target_id, enrollment_status, enrolled_at)
-       VALUES ($1, 'classroom', $2, 'active', CURRENT_TIMESTAMP)
-       ON CONFLICT (user_id, target_type, target_id)
-       DO UPDATE SET
-         enrollment_status = 'active',
-         enrolled_at = CURRENT_TIMESTAMP`,
-      [studentUserId, classroomId]
-    );
+    const enrollmentClient = await pool.connect();
+
+    try {
+      await enrollmentClient.query('BEGIN');
+
+      const existingEnrollmentResult = await enrollmentClient.query(
+        `SELECT enrollment_status
+         FROM user_enrollments
+         WHERE user_id = $1
+           AND target_type = 'classroom'
+           AND target_id = $2
+         LIMIT 1`,
+        [studentUserId, classroomId]
+      );
+
+      const alreadyActiveEnrollment = String(existingEnrollmentResult.rows?.[0]?.enrollment_status || '').toLowerCase() === 'active';
+
+      const teacherState = normalizeTeacherState(matchedClassroom.teacherState || {});
+      const rosterKey = String(classroomId);
+      const existingRoster = teacherState.studentsByClassroom?.[rosterKey]
+        || teacherState.studentsByClassroom?.[classroomId]
+        || [];
+      const normalizedRoster = Array.isArray(existingRoster) ? existingRoster : [];
+
+      const alreadyInRoster = normalizedRoster.some((item) => {
+        const rosterStudentId = Number(item?.studentId || item?.userId || item?.id);
+        return Number.isInteger(rosterStudentId) && rosterStudentId === studentUserId;
+      });
+
+      if (!alreadyInRoster && Number.isInteger(maximumCapacity)) {
+        // Count unique students by filtering out the student that is trying to join
+        const currentActiveStudents = normalizedRoster.filter(item => {
+          const rosterStudentId = Number(item?.studentId || item?.userId || item?.id);
+          return Number.isInteger(rosterStudentId) && rosterStudentId !== studentUserId;
+        }).length;
+
+        if (currentActiveStudents >= maximumCapacity) {
+          await enrollmentClient.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'The class is full. Please ask your teacher for further action.'
+          });
+        }
+      }
+
+      // Check for schedule overlapping with existing enrollments
+      const scheduleConflict = await checkUserScheduleConflict(studentUserId, classroomId, pool);
+      if (scheduleConflict.hasConflict) {
+        await enrollmentClient.query('ROLLBACK');
+        return res.status(409).json({
+          error: `You already have a class at this duration that conflicts with ${scheduleConflict.conflictingClassroomName || 'another class'}. Please ask your teacher to join another class.`
+        });
+      }
+
+      await enrollmentClient.query(
+        `INSERT INTO user_enrollments (user_id, target_type, target_id, enrollment_status, enrolled_at)
+         VALUES ($1, 'classroom', $2, 'active', CURRENT_TIMESTAMP)
+         ON CONFLICT (user_id, target_type, target_id)
+         DO UPDATE SET
+           enrollment_status = 'active',
+           enrolled_at = CURRENT_TIMESTAMP`,
+        [studentUserId, classroomId]
+      );
+
+      await enrollmentClient.query('COMMIT');
+    } catch (enrollmentError) {
+      try {
+        await enrollmentClient.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.warn('Rollback failed during join class enrollment transaction:', rollbackError?.message || rollbackError);
+      }
+      throw enrollmentError;
+    } finally {
+      enrollmentClient.release();
+    }
 
     try {
       const studentResult = await pool.query(
@@ -2807,6 +2942,25 @@ async function exportClassroomAuditLogs(req, res) {
   }
 }
 
+async function checkScheduleConflict(req, res) {
+  try {
+    const { studentId, classroomId } = req.body;
+    
+    if (!studentId || !classroomId) {
+      return res.status(400).json({ error: 'studentId and classroomId are required' });
+    }
+
+    const scheduleConflict = await checkUserScheduleConflict(studentId, classroomId, pool);
+    return res.json({
+      hasConflict: scheduleConflict.hasConflict,
+      conflictingClassroomName: scheduleConflict.conflictingClassroomName
+    });
+  } catch (error) {
+    console.error('Check schedule conflict error:', error);
+    return res.status(500).json({ error: 'Failed to verify schedule' });
+  }
+}
+
 module.exports = {
   getTeacherState,
   saveTeacherState,
@@ -2821,5 +2975,6 @@ module.exports = {
   restoreAdminClassroom,
   getClassroomAuditLogs,
   getClassroomAuditStats,
-  exportClassroomAuditLogs
+  exportClassroomAuditLogs,
+  checkScheduleConflict
 };

@@ -5,6 +5,14 @@ import api, { classroomAPI } from '../services/api';
 import { storage } from '../utils/storage';
 import '../styles/TeacherClassroomTab.css';
 
+function formatLocalDate(dateObj) {
+  if (!dateObj) return '';
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 const SUBJECT_OPTIONS = [
   'Mathematics',
   'Additional Mathematics',
@@ -157,7 +165,6 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
   const [scheduleStartMeridiem, setScheduleStartMeridiem] = useState(initialStartTime12.meridiem);
   const [scheduleDuration, setScheduleDuration] = useState(initialSchedule.duration);
   const [error, setError] = useState('');
-  const [bannerPreview, setBannerPreview] = useState(classroom?.bannerPreview || '');
 
   const convert12To24Time = (hour12Text, minuteText, meridiem) => {
     if (!hour12Text || !minuteText || !meridiem) {
@@ -233,26 +240,6 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
     ));
   };
 
-  const handleBanner = (event) => {
-    const selectedFile = event.target.files?.[0];
-    if (!selectedFile) {
-      return;
-    }
-
-    if (!['image/jpeg', 'image/png'].includes(selectedFile.type)) {
-      setError('Banner image must be JPG or PNG');
-      return;
-    }
-
-    if (selectedFile.size > 5 * 1024 * 1024) {
-      setError('Banner image must be 5MB or below');
-      return;
-    }
-
-    setError('');
-    setField('bannerFile', selectedFile);
-    setBannerPreview(URL.createObjectURL(selectedFile));
-  };
 
   const submit = (asDraft = false) => {
     if (isView) {
@@ -320,8 +307,7 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
       status: asDraft ? 'Draft' : form.status,
       joinCode: form.selfEnrollmentEnabled
         ? (form.joinCode || generateJoinCode())
-        : '',
-      bannerPreview
+        : ''
     };
 
     onSave(payload, asDraft);
@@ -485,11 +471,6 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
             rows={3}
           />
 
-          <label>Banner Image (JPG/PNG max 5MB)</label>
-          <input type="file" accept="image/png,image/jpeg" onChange={handleBanner} disabled={isView} />
-
-          {bannerPreview && <img src={bannerPreview} alt="Banner preview" className="teacher-class-banner-preview" />}
-
           <label className="teacher-switch-row">
             <input
               type="checkbox"
@@ -576,7 +557,7 @@ function UploadMaterialModal({ classroomName, onClose, onSubmit, isUploading = f
       description: description.trim(),
       fileName: file.name,
       size: formattedSize,
-      uploadedDate: new Date().toISOString().slice(0, 10),
+      uploadedDate: formatLocalDate(new Date()),
       downloads: 0,
       icon: iconMap[extension] || 'fa-file'
     });
@@ -793,10 +774,16 @@ function GradingReviewModal({
   onDownloadFile
 }) {
   const [notesCollapsed, setNotesCollapsed] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
 
   useEffect(() => {
     setNotesCollapsed(false);
+    setZoomScale(1);
   }, [row?.id]);
+
+  const handleZoomIn = () => setZoomScale((prev) => Math.min(prev + 0.5, 5));
+  const handleZoomOut = () => setZoomScale((prev) => Math.max(prev - 0.5, 0.5));
+  const handleZoomReset = () => setZoomScale(1);
 
   if (!row) {
     return null;
@@ -821,7 +808,7 @@ function GradingReviewModal({
           </div>
         </div>
 
-        <div className="teacher-grading-preview-canvas">
+        <div className="teacher-grading-preview-canvas" style={{ position: 'relative', overflow: 'hidden' }}>
           {previewLoading && (
             <div className="teacher-grading-preview-placeholder">
               <i className="fas fa-spinner fa-spin"></i>
@@ -831,11 +818,29 @@ function GradingReviewModal({
           )}
 
           {!previewLoading && previewMode === 'image' && previewUrl && (
-            <div className="teacher-material-preview-body">
+            <div className="teacher-material-preview-body" style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10, display: 'flex', gap: '8px', background: 'rgba(255, 255, 255, 0.9)', padding: '4px', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px' }} onClick={handleZoomOut} title="Zoom Out">
+                  <i className="fas fa-search-minus"></i>
+                </button>
+                <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px' }} onClick={handleZoomReset} title="Reset Zoom">
+                  {Math.round(zoomScale * 100)}%
+                </button>
+                <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px' }} onClick={handleZoomIn} title="Zoom In">
+                  <i className="fas fa-search-plus"></i>
+                </button>
+              </div>
               <img
                 src={previewUrl}
                 alt={row.fileName || 'Submission preview'}
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                style={{
+                  transform: `scale(${zoomScale})`,
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.2s ease',
+                  cursor: zoomScale > 1 ? 'grab' : 'default',
+                  maxWidth: '100%',
+                  maxHeight: zoomScale === 1 ? '100%' : 'none'
+                }}
               />
             </div>
           )}
@@ -1067,10 +1072,21 @@ function ManageStudentsModal({ classroomName, classroomGradeLevel, enrolledStude
     setLocalStudents((previous) => previous.filter((student) => student.studentId !== studentId));
   };
 
-  const addStudent = (student) => {
+  const addStudent = async (student) => {
     if (!isLevelAllowed(student)) {
       return;
     }
+
+    try {
+      const conflictCheck = await api.checkScheduleConflict(student.studentId, window.selectedClassroomId);
+      if (conflictCheck.hasConflict) {
+        Toast.error(`${student.name} already has a class at this time: ${conflictCheck.conflictingClassroomName}`);
+        return;
+      }
+    } catch (error) {
+      console.warn('Could not verify schedule overlap, proceeding anyway:', error);
+    }
+
     setLocalStudents((previous) => [...previous, student]);
   };
 
@@ -1346,7 +1362,7 @@ function TakeAttendanceModal({ classroomName, students, initialDate, onClose, on
     });
   }, [students]);
 
-  const [date, setDate] = useState(initialDate || new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(initialDate || formatLocalDate(new Date()));
   const displayStudentNoById = useMemo(() => {
     const next = {};
     sortedStudents.forEach((student, index) => {
@@ -1608,6 +1624,13 @@ function StudentAttendanceModal({ classroomName, student, historyRows, onClose }
 }
 
 function MaterialPreviewModal({ fileName, previewUrl, onClose }) {
+  const [zoomScale, setZoomScale] = useState(1);
+  const isImage = previewUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName || previewUrl);
+
+  const handleZoomIn = () => setZoomScale((prev) => Math.min(prev + 0.5, 5));
+  const handleZoomOut = () => setZoomScale((prev) => Math.max(prev - 0.5, 0.5));
+  const handleZoomReset = () => setZoomScale(1);
+
   if (!previewUrl) {
     return null;
   }
@@ -1622,12 +1645,40 @@ function MaterialPreviewModal({ fileName, previewUrl, onClose }) {
           </button>
         </div>
 
-        <div className="teacher-material-preview-body">
-          <iframe
-            title={fileName || 'Material preview'}
-            src={previewUrl}
-            className="teacher-material-preview-frame"
-          />
+        <div className="teacher-material-preview-body" style={isImage ? { position: 'relative', width: '100%', height: '100%', overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center' } : {}}>
+          {isImage ? (
+            <>
+              <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10, display: 'flex', gap: '8px', background: 'rgba(255, 255, 255, 0.9)', padding: '4px', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px' }} onClick={handleZoomOut} title="Zoom Out">
+                  <i className="fas fa-search-minus"></i>
+                </button>
+                <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px' }} onClick={handleZoomReset} title="Reset Zoom">
+                  {Math.round(zoomScale * 100)}%
+                </button>
+                <button type="button" className="secondary" style={{ padding: '4px 8px', fontSize: '14px' }} onClick={handleZoomIn} title="Zoom In">
+                  <i className="fas fa-search-plus"></i>
+                </button>
+              </div>
+              <img
+                src={previewUrl}
+                alt={fileName || 'Material preview'}
+                style={{
+                  transform: `scale(${zoomScale})`,
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.2s ease',
+                  cursor: zoomScale > 1 ? 'grab' : 'default',
+                  maxWidth: '100%',
+                  maxHeight: zoomScale === 1 ? '100%' : 'none'
+                }}
+              />
+            </>
+          ) : (
+            <iframe
+              title={fileName || 'Material preview'}
+              src={previewUrl}
+              className="teacher-material-preview-frame"
+            />
+          )}
         </div>
 
         <div className="teacher-class-modal-actions">
@@ -1710,7 +1761,7 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
   const [classrooms, setClassrooms] = useState([]);
 
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [attendanceDate, setAttendanceDate] = useState(formatLocalDate(new Date()));
   const [attendanceClassroomId, setAttendanceClassroomId] = useState(null);
   const [attendanceView, setAttendanceView] = useState('calendar');
   const [attendanceMonthOffset, setAttendanceMonthOffset] = useState(0);
@@ -1988,7 +2039,7 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
     () => studentsByClassroom[attendanceClassroomId] || [],
     [attendanceClassroomId, studentsByClassroom]
   );
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = formatLocalDate(new Date());
 
   const [attendanceStudentStatsByClassroom, setAttendanceStudentStatsByClassroom] = useState({});
   const [attendanceDetailByClassroom, setAttendanceDetailByClassroom] = useState({});
@@ -2649,6 +2700,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
     }
 
     if (modalState.classroom) {
+      const classStudents = studentsByClassroom[modalState.classroom.classroomId] || studentsByClassroom[String(modalState.classroom.classroomId)] || [];
+      const studentCount = Array.isArray(classStudents) ? classStudents.length : 0;
+      if (Number.isInteger(sanitizedPayload.maximumCapacity) && sanitizedPayload.maximumCapacity < studentCount) {
+        showMessage(`Class capacity cannot be less than current enrolled students (${studentCount})`, 'error');
+        return;
+      }
+
       const updated = classrooms.map((item) => (
         item.classroomId === modalState.classroom.classroomId
           ? {
@@ -2686,7 +2744,7 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       assistantAccessRole: 'owner',
       isSharedClassroom: false,
       currentEnrollment: 0,
-      createdAt: new Date().toISOString().slice(0, 10),
+      createdAt: formatLocalDate(new Date()),
       status: asDraft ? 'Draft' : 'Active'
     };
 
@@ -3193,8 +3251,8 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       const uploadedFile = uploadResponse?.data?.file;
       const fileSize = uploadedFile?.file_size ?? materialPayload.file.size;
       const uploadedDate = uploadedFile?.uploaded_at
-        ? new Date(uploadedFile.uploaded_at).toISOString().slice(0, 10)
-        : new Date().toISOString().slice(0, 10);
+        ? formatLocalDate(new Date(uploadedFile.uploaded_at))
+        : formatLocalDate(new Date());
       const normalizedTitle = String(
         materialPayload.title
         || materialPayload.description
@@ -3233,20 +3291,7 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
       setMaterialsByClassroom(nextMaterialsByClassroom);
 
-      const recipientIds = selectedClassStudents
-        .map((student) => Number(student.studentId))
-        .filter((value) => Number.isInteger(value) && value > 0);
-
-      if (materialRecord.fileId && recipientIds.length > 0) {
-        try {
-          await api.post('/storage/share', {
-            fileIds: [materialRecord.fileId],
-            recipientIds
-          });
-        } catch (shareError) {
-          console.error('Auto-share classroom material failed:', shareError);
-        }
-      }
+      // Auto-share material to students storage is disabled as requested by user.
 
       closeActionModal();
       showMessage('Material uploaded successfully (saved to Cloudflare R2)');
@@ -3379,6 +3424,22 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
     if (!canManageClassroomStudents) {
       showMessage('Only classroom owner can manage students', 'warning');
+      return;
+    }
+
+    const configuredMaximumCapacity = Number.parseInt(selectedClassroom?.maximumCapacity, 10);
+    const maximumCapacity = Number.isInteger(configuredMaximumCapacity) && configuredMaximumCapacity > 0
+      ? configuredMaximumCapacity
+      : null;
+
+    const uniqueStudentCount = new Set(
+      (Array.isArray(updatedStudents) ? updatedStudents : [])
+        .map((student) => Number(student?.studentId || student?.userId || student?.id))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    ).size;
+
+    if (Number.isInteger(maximumCapacity) && uniqueStudentCount > maximumCapacity) {
+      showMessage(`Class capacity is ${maximumCapacity}. Remove student(s) before saving.`, 'warning');
       return;
     }
 

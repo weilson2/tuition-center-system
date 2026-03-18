@@ -20,6 +20,8 @@ router.post('/student/assignments/:assignmentId/unsubmit', classroomController.u
 router.get('/announcements', classroomController.getClassAnnouncements);
 router.post('/announcements', classroomController.postClassAnnouncement);
 
+router.post('/check-schedule-conflict', classroomController.checkScheduleConflict);
+
 router.get('/audit-logs', classroomController.getClassroomAuditLogs);
 router.get('/audit-stats', classroomController.getClassroomAuditStats);
 router.get('/audit-logs/export', classroomController.exportClassroomAuditLogs);

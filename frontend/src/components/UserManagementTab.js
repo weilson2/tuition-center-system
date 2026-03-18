@@ -387,15 +387,15 @@ function UserManagementTab({ currentUser }) {
     setToast({ message, type });
   };
 
-  const fetchUsers = async (page = pagination.page) => {
+  const fetchUsers = async (page = pagination.page, filterOverrides = {}) => {
     try {
       setLoadingUsers(true);
       const response = await adminUserAPI.getUsers({
         page,
         limit: pagination.limit,
-        search: userFilters.search,
-        role: userFilters.role,
-        status: userFilters.status
+        search: filterOverrides.search !== undefined ? filterOverrides.search : userFilters.search,
+        role: filterOverrides.role !== undefined ? filterOverrides.role : userFilters.role,
+        status: filterOverrides.status !== undefined ? filterOverrides.status : userFilters.status
       });
       setUsers(response.users || []);
       setUserStats(response.stats || {
@@ -898,7 +898,7 @@ function UserManagementTab({ currentUser }) {
                   onChange={(event) => setUserFilters((prev) => ({ ...prev, search: event.target.value }))}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
-                      fetchUsers(1);
+                      fetchUsers(1, { search: event.target.value });
                     }
                   }}
                 />
@@ -907,9 +907,9 @@ function UserManagementTab({ currentUser }) {
               <select
                 value={userFilters.role}
                 onChange={(event) => {
-                  const value = event.target.value;
+                  const value = event.target.value.toLowerCase();
                   setUserFilters((prev) => ({ ...prev, role: value }));
-                  setTimeout(() => fetchUsers(1), 0);
+                  fetchUsers(1, { role: value });
                 }}
               >
                 <option value="">All Roles</option>
@@ -923,9 +923,9 @@ function UserManagementTab({ currentUser }) {
               <select
                 value={userFilters.status}
                 onChange={(event) => {
-                  const value = event.target.value;
+                  const value = event.target.value.toLowerCase();
                   setUserFilters((prev) => ({ ...prev, status: value }));
-                  setTimeout(() => fetchUsers(1), 0);
+                  fetchUsers(1, { status: value });
                 }}
               >
                 <option value="">All Status</option>
