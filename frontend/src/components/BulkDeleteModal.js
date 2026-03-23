@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
+import React, { useCallback, useEffect, useState } from "react";
+import axios from "axios";
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 const getToken = () => {
-  return localStorage.getItem('token') || sessionStorage.getItem('token');
+  return localStorage.getItem("token") || sessionStorage.getItem("token");
 };
 
 // Then use: const token = getToken();
@@ -19,18 +19,18 @@ function BulkDeleteModal({ fileIds, onClose, onConfirm }) {
       setLoading(true);
       const token = getToken();
 
-      const promises = fileIds.map(fileId =>
+      const promises = fileIds.map((fileId) =>
         axios.get(`${API_URL}/storage/files/${fileId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       );
 
       const responses = await Promise.all(promises);
-      const files = responses.map(res => res.data.file);
+      const files = responses.map((res) => res.data.file);
       setFilesDetails(files);
       setLoading(false);
     } catch (error) {
-      console.error('Fetch files details error:', error);
+      console.error("Fetch files details error:", error);
       setLoading(false);
     }
   }, [fileIds]);
@@ -42,28 +42,31 @@ function BulkDeleteModal({ fileIds, onClose, onConfirm }) {
   }, [fetchFilesDetails, fileIds]);
 
   const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
   };
 
   const getTotalSize = () => {
-    return filesDetails.reduce((total, file) => total + parseInt(file.file_size), 0);
+    return filesDetails.reduce(
+      (total, file) => total + parseInt(file.file_size),
+      0,
+    );
   };
 
   const getFileIcon = (fileType) => {
-    if (!fileType) return 'fa-file';
-    if (fileType.startsWith('image/')) return 'fa-file-image';
-    if (fileType === 'application/pdf') return 'fa-file-pdf';
-    if (fileType.startsWith('video/')) return 'fa-file-video';
-    if (fileType.startsWith('audio/')) return 'fa-file-audio';
-    if (fileType.includes('word')) return 'fa-file-word';
-    if (fileType.includes('excel')) return 'fa-file-excel';
-    if (fileType.includes('powerpoint')) return 'fa-file-powerpoint';
-    if (fileType.startsWith('text/')) return 'fa-file-alt';
-    return 'fa-file';
+    if (!fileType) return "fa-file";
+    if (fileType.startsWith("image/")) return "fa-file-image";
+    if (fileType === "application/pdf") return "fa-file-pdf";
+    if (fileType.startsWith("video/")) return "fa-file-video";
+    if (fileType.startsWith("audio/")) return "fa-file-audio";
+    if (fileType.includes("word")) return "fa-file-word";
+    if (fileType.includes("excel")) return "fa-file-excel";
+    if (fileType.includes("powerpoint")) return "fa-file-powerpoint";
+    if (fileType.startsWith("text/")) return "fa-file-alt";
+    return "fa-file";
   };
 
   const handleDelete = async () => {
@@ -83,7 +86,9 @@ function BulkDeleteModal({ fileIds, onClose, onConfirm }) {
           <div className="delete-icon-warning">
             <i className="fas fa-exclamation-triangle"></i>
           </div>
-          <h3>Delete {fileIds.length} File{fileIds.length > 1 ? 's' : ''}?</h3>
+          <h3>
+            Delete {fileIds.length} File{fileIds.length > 1 ? "s" : ""}?
+          </h3>
           <button onClick={onClose} className="close-btn" disabled={deleting}>
             <i className="fas fa-times"></i>
           </button>
@@ -101,8 +106,12 @@ function BulkDeleteModal({ fileIds, onClose, onConfirm }) {
               <div className="delete-warning-banner">
                 <i className="fas fa-exclamation-circle"></i>
                 <div>
-                  <strong>This action cannot be undone</strong>
-                  <p>The following {fileIds.length} file{fileIds.length > 1 ? 's' : ''} will be permanently removed from your storage.</p>
+                  <strong>This action is irreversible</strong>
+                  <p>
+                    The following {fileIds.length} file
+                    {fileIds.length > 1 ? "s" : ""} will be permanently removed
+                    from your storage.
+                  </p>
                 </div>
               </div>
 
@@ -116,8 +125,12 @@ function BulkDeleteModal({ fileIds, onClose, onConfirm }) {
                         <i className={`fas ${getFileIcon(file.file_type)}`}></i>
                       </div>
                       <div className="file-delete-info">
-                        <p className="file-delete-name">{file.original_filename}</p>
-                        <p className="file-delete-size">{formatFileSize(file.file_size)}</p>
+                        <p className="file-delete-name">
+                          {file.original_filename}
+                        </p>
+                        <p className="file-delete-size">
+                          {formatFileSize(file.file_size)}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -132,7 +145,9 @@ function BulkDeleteModal({ fileIds, onClose, onConfirm }) {
                 </div>
                 <div className="storage-summary-item highlight">
                   <span className="summary-label">Storage to be freed:</span>
-                  <span className="summary-value">{formatFileSize(getTotalSize())}</span>
+                  <span className="summary-value">
+                    {formatFileSize(getTotalSize())}
+                  </span>
                 </div>
               </div>
             </>
@@ -166,7 +181,7 @@ function BulkDeleteModal({ fileIds, onClose, onConfirm }) {
             ) : (
               <>
                 <i className="fas fa-trash"></i>
-                Delete {fileIds.length} File{fileIds.length > 1 ? 's' : ''}
+                Delete {fileIds.length} File{fileIds.length > 1 ? "s" : ""}
               </>
             )}
           </button>
