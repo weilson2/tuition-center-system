@@ -660,12 +660,34 @@ function UserManagementTab({ currentUser }) {
         await executeResetRolePermissions(payload?.role);
       } else if (actionType === 'edit-user-role-change') {
         await performEditUser(payload);
+      } else if (actionType === 'delete-user') {
+        await executeDeleteUser(payload?.userId);
       }
 
       setConfirmDialogState({ open: false, title: '', message: '', actionType: '', payload: null });
     } finally {
       setConfirmingDialogAction(false);
     }
+  };
+
+  const executeDeleteUser = async (userId) => {
+    try {
+      await adminUserAPI.deleteUser(userId);
+      showMessage('User deleted successfully');
+      fetchUsers(pagination.page);
+    } catch (error) {
+      showMessage(error.response?.data?.error || 'Failed to delete user', 'error');
+    }
+  };
+
+  const handleDeleteUser = (userId) => {
+    setConfirmDialogState({
+      open: true,
+      title: 'Confirm Delete User',
+      message: 'Are you sure you want to PERMANENTLY delete this user? This action cannot be undone.',
+      actionType: 'delete-user',
+      payload: { userId }
+    });
   };
 
   const downloadTemplate = async () => {
@@ -1004,6 +1026,14 @@ function UserManagementTab({ currentUser }) {
                           disabled={resettingPasswordUserId === item.user_id}
                         >
                           <i className={`fas ${resettingPasswordUserId === item.user_id ? 'fa-spinner fa-spin' : 'fa-key'}`}></i>
+                        </button>
+                        <button
+                          className="um-btn-icon delete"
+                          title="Delete User"
+                          onClick={() => handleDeleteUser(item.user_id)}
+                          disabled={currentUser?.userId === item.user_id}
+                        >
+                          <i className="fas fa-trash"></i>
                         </button>
                       </div>
                     </td>

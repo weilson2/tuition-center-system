@@ -1393,11 +1393,64 @@ async function exportUsers(req, res) {
   }
 }
 
+async function deleteUser(req, res) {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    const adminId = req.user.userId;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    if (adminId === userId) {
+      return res.status(403).json({ error: 'Administrators cannot delete their own account' });
+    }
+
+    console.log('🗑️ Attempting to delete user ID:', userId, 'by admin:', adminId);
+
+    const userResult = await pool.query(
+      'SELECT email, full_name, role FROM users WHERE user_id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const deletedUser = userResult.rows[0];
+
+    // Delete user (cascade should handle dependencies if set up, or add manual cleanup)
+    await pool.query('DELETE FROM users WHERE user_id = $1', [userId]);
+
+    await logAudit({
+      userId: adminId,
+      sessionId: req.sessionId,
+      operationType: 'admin_user_delete',
+      ipAddress,
+      operationDetails: JSON.stringify({
+        deletedUserId: userId,
+        deletedEmail: deletedUser.email,
+        deletedName: deletedUser.full_name,
+        deletedRole: deletedUser.role
+      }),
+      status: 'success',
+      userAgent: req.headers['user-agent']
+    });
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user. Ensure there are no dependent records.' });
+  }
+}
+
 module.exports = {
   listUsers,
   getUserStats,
   addUser,
   editUser,
+  deleteUser,
   resetUserPassword,
   enrollUsers,
   getRolePermissions,

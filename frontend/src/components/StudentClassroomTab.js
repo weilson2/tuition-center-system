@@ -1340,6 +1340,7 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
     setSubmitAssignment(null);
     setSubmittingAssignment(false);
+    showInfoDialog('Assignment submitted successfully', 'Success');
   };
 
   const handleJoinClassByCode = async () => {

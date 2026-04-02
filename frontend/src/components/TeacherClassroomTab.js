@@ -3347,10 +3347,10 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       // Auto-share material to students storage is disabled as requested by user.
 
       closeActionModal();
-      showMessage('Material uploaded successfully (saved to Cloudflare R2)');
+      showMessage('Material uploaded successfully');
     } catch (error) {
       console.error('Failed to upload material to cloud storage:', error);
-      showMessage(error.response?.data?.error || 'Failed to upload material to Cloudflare R2', 'error');
+      showMessage(error.response?.data?.error || 'Failed to upload material', 'error');
     } finally {
       setUploadingMaterial(false);
     }

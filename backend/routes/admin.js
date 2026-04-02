@@ -38,6 +38,7 @@ router.get('/users', userManagementController.listUsers);
 router.get('/users/stats', userManagementController.getUserStats);
 router.post('/users', userManagementController.addUser);
 router.put('/users/:userId', userManagementController.editUser);
+router.delete('/users/:userId', userManagementController.deleteUser);
 router.post('/users/:userId/reset-password', userManagementController.resetUserPassword);
 router.post('/users/:userId/system-reset-password', userManagementController.resetUserPassword);
 
