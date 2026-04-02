@@ -14,7 +14,6 @@ const upload = multer({
   }
 });
 
-// All routes require authentication
 router.use(authenticateToken);
 
 // File operations

@@ -16,7 +16,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Test route
+// Health check route
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 

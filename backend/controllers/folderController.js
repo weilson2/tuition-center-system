@@ -279,7 +279,6 @@ async function addFilesToFolder(req, res) {
     const { fileIds } = req.body;
     const userId = req.user.userId;
 
-    console.log('📁 Add to folder request:', { folderId, fileIds, userId });
 
     if (!fileIds || fileIds.length === 0) {
       await client.query('ROLLBACK');
@@ -294,7 +293,6 @@ async function addFilesToFolder(req, res) {
     );
 
     if (folderResult.rows.length === 0) {
-      console.log('❌ Folder not found or access denied');
       await client.query('ROLLBACK');
       transactionStarted = false;
       return res.status(404).json({ error: 'Folder not found' });
@@ -306,10 +304,8 @@ async function addFilesToFolder(req, res) {
       [fileIds, userId]
     );
 
-    console.log('📄 Files found:', filesResult.rows.length, 'of', fileIds.length);
 
     if (filesResult.rows.length !== fileIds.length) {
-      console.log('❌ Some files not found or not owned by user');
       await client.query('ROLLBACK');
       transactionStarted = false;
       return res.status(403).json({ error: 'You can only add your own files to folders' });
@@ -333,7 +329,6 @@ async function addFilesToFolder(req, res) {
 
     await client.query('COMMIT');
 
-    console.log('✅ Successfully added', addedCount, 'files to folder');
 
     // Log audit (don't fail if this errors)
     try {
@@ -399,7 +394,6 @@ async function removeFilesFromFolder(req, res) {
     const { fileIds } = req.body;
     const userId = req.user.userId;
 
-    console.log('📁 Remove from folder request:', { folderId, fileIds, userId });
 
     if (!fileIds || fileIds.length === 0) {
       await client.query('ROLLBACK');
@@ -427,7 +421,6 @@ async function removeFilesFromFolder(req, res) {
 
     await client.query('COMMIT');
 
-    console.log('✅ Successfully removed', result.rows.length, 'files from folder');
 
     // Log audit
     try {

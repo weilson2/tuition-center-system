@@ -243,11 +243,11 @@ const r2Client = new S3Client({
 
 // Helper function to generate encryption key
 const generateEncryptionKey = () => {
-  return crypto.randomBytes(32); // 256-bit key
+  return crypto.randomBytes(32); 
 };
 
 // Updated to calculate checksum during encryption
-function encryptFile(buffer, fileName) {
+function encryptFile(buffer, _fileName) {
   const key = generateEncryptionKey();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
@@ -257,16 +257,12 @@ function encryptFile(buffer, fileName) {
   // Calculate SHA-256 checksum of the original file
   const checksum = crypto.createHash("sha256").update(buffer).digest("hex");
 
-  console.log(
-    `🔒 File encrypted successfully: { File: ${fileName}, Checksum: ${checksum}, IV: ${iv.toString("base64")}, AuthTag: ${authTag.toString("base64")} }`,
-  );
-
   return {
     encryptedData: encrypted,
     key: key.toString("base64"),
     iv: iv.toString("base64"),
     authTag: authTag.toString("base64"),
-    checksum, // Include checksum in the result
+    checksum, 
   };
 }
 
@@ -276,13 +272,9 @@ const decryptFile = (
   key,
   iv,
   authTag,
-  fileName,
+  _fileName,
   storedChecksum,
 ) => {
-  console.log(
-    `🔍 Decryption Metadata: { Key: ${key}, IV: ${iv}, AuthTag: ${authTag}, Stored Checksum: ${storedChecksum} }`,
-  );
-
   const decipher = crypto.createDecipheriv(
     "aes-256-gcm",
     Buffer.from(key, "base64"),
@@ -294,15 +286,6 @@ const decryptFile = (
     decipher.update(encryptedBuffer),
     decipher.final(),
   ]);
-
-  // Calculate checksum of decrypted data
-  const checksum = crypto.createHash("sha256").update(decrypted).digest("hex");
-
-  const integrityStatus = checksum === storedChecksum ? "PASSED" : "FAILED";
-
-  console.log(
-    `🔓 File decrypted successfully: { File: ${fileName || "Unknown"}, Checksum: ${checksum}, Integrity: ${integrityStatus} }`,
-  );
 
   return decrypted;
 };
@@ -593,13 +576,6 @@ async function uploadFile(req, res) {
     const currentUsed = await getPersonalStorageUsedBytes(client, userId);
     const fileSize = file.buffer.length;
 
-    console.log("📊 Storage Check:");
-    console.log("  Current used:", currentUsed);
-    console.log("  File size:", fileSize);
-    console.log("  Total after upload:", currentUsed + fileSize);
-    console.log("  Quota limit:", quotaLimit);
-    console.log("  Will exceed?", currentUsed + fileSize > quotaLimit);
-
     // Check if upload would exceed quota (only personal uploads count toward personal quota)
     if (
       uploadScope === "personal" &&
@@ -791,7 +767,6 @@ async function uploadFile(req, res) {
 }
 
 // Get User Files
-// Get User Files
 async function getUserFiles(req, res) {
   try {
     await ensureFileScopeColumns(pool);
@@ -897,14 +872,6 @@ async function getSharedFiles(req, res) {
     const userId = req.user.userId;
     const { search, sharerRole, dateFrom, dateTo } = req.query;
 
-    console.log("📥 Get shared files request:", {
-      userId,
-      search,
-      sharerRole,
-      dateFrom,
-      dateTo,
-    });
-
     let query = `
       SELECT f.*, fs.shared_at, fs.sharing_id, fs.is_active as sharing_active,
         COALESCE(fs.can_download, true) AS can_download,
@@ -947,10 +914,6 @@ async function getSharedFiles(req, res) {
     query += ` ORDER BY fs.shared_at DESC`;
 
     const result = await pool.query(query, params);
-
-    console.log(
-      `✅ Found ${result.rows.length} shared files for user ${userId}`,
-    );
 
     res.json({ files: result.rows });
   } catch (error) {
@@ -1145,7 +1108,7 @@ async function downloadFile(req, res) {
   }
 }
 
-// Delete File
+
 // Delete File
 async function deleteFile(req, res) {
   const client = await pool.connect();
@@ -1599,13 +1562,6 @@ async function updateFileContent(req, res) {
     const oldFileSize = parseInt(file.file_size);
     const sizeDifference = newFileSize - oldFileSize;
 
-    console.log("📝 File Edit:", {
-      filename: file.original_filename,
-      oldSize: oldFileSize,
-      newSize: newFileSize,
-      difference: sizeDifference,
-    });
-
     // Check storage quota ONLY if file size increased
     if (sizeDifference > 0) {
       const userResult = await client.query(
@@ -1620,17 +1576,6 @@ async function updateFileContent(req, res) {
         quotaLimit === null
           ? Number.POSITIVE_INFINITY
           : quotaLimit - currentUsed;
-
-      console.log("💾 Storage Check:", {
-        currentUsed,
-        quotaLimit,
-        availableSpace,
-        needsAdditional: sizeDifference,
-        willExceed:
-          quotaLimit === null
-            ? false
-            : currentUsed + sizeDifference > quotaLimit,
-      });
 
       // We only need to check if we have enough space for the ADDITIONAL bytes
       if (quotaLimit !== null && sizeDifference > availableSpace) {
@@ -1689,9 +1634,6 @@ async function updateFileContent(req, res) {
     // Keep users.storage_used synced to PERSONAL scope only
     if (sizeDifference !== 0) {
       await syncUserPersonalStorageUsed(client, userId);
-      console.log(
-        `✅ Updated storage usage by ${sizeDifference > 0 ? "+" : ""}${sizeDifference} bytes`,
-      );
     }
 
     await client.query("COMMIT");
@@ -1937,8 +1879,6 @@ async function shareFiles(req, res) {
       req.body?.permission || req.body?.sharePermission || "all",
     );
 
-    console.log("📤 Share request:", { fileIds, recipientIds, userId });
-
     if (!fileIds || fileIds.length === 0) {
       return res.status(400).json({ error: "No files provided" });
     }
@@ -2079,10 +2019,6 @@ async function shareFiles(req, res) {
     } catch (auditError) {
       console.error("Audit log error (non-critical):", auditError);
     }
-
-    console.log(
-      `✅ Successfully shared ${fileIds.length} file(s) with ${recipientIds.length} recipient(s)`,
-    );
 
     res.json({
       message: `Successfully shared ${fileIds.length} file(s) with ${normalizedRecipientIds.length} recipient(s)`,
@@ -2629,3 +2565,4 @@ async function ensureSharingPermissionColumns(clientLike = pool) {
     sharingPermissionColumnsEnsured = true;
   }
 }
+

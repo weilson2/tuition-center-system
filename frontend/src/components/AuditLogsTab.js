@@ -108,7 +108,6 @@ function AuditLogsTab() {
       setLoading(true);
       const token = getToken();
       
-      console.log('🔍 Fetching audit logs with filters:', filters);
       
       const params = {
         page: pagination.page,
@@ -121,8 +120,6 @@ function AuditLogsTab() {
         params
       });
 
-      console.log('✅ Received logs:', response.data);
-      console.log('📊 Total logs:', response.data.logs?.length);
 
       setLogs(response.data.logs);
       setPagination(prev => ({
