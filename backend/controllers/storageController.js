@@ -657,7 +657,7 @@ async function copyFile(req, res) {
     if (sourceFile.r2_storage_path) {
       const copyCommand = new CopyObjectCommand({
         Bucket: process.env.R2_BUCKET_NAME,
-        CopySource: encodeURI(`${process.env.R2_BUCKET_NAME}/${sourceFile.r2_storage_path}`),
+        CopySource: encodeURI(`/${process.env.R2_BUCKET_NAME}/${sourceFile.r2_storage_path}`),
         Key: newStoragePath
       });
       await r2Client.send(copyCommand);
@@ -665,17 +665,20 @@ async function copyFile(req, res) {
     
     const insertResult = await client.query(
       `INSERT INTO files 
-       (user_id, original_filename, file_type, file_size, r2_storage_path, 
+       (user_id, folder_id, original_filename, encrypted_filename, file_type, file_extension, file_size, r2_storage_path, 
         initialization_vector, authentication_tag, encryption_key_encrypted, 
         sha256_checksum, file_scope, classroom_id) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
        RETURNING *`,
       [
-        userId, 
-        sourceFile.original_filename, 
-        sourceFile.file_type, 
-        sourceFile.file_size, 
-        newStoragePath,
+        userId,
+        null, // folder_id
+        sourceFile.original_filename,
+        newStoragePath, // encrypted_filename
+        sourceFile.file_type,
+        sourceFile.file_extension,
+        sourceFile.file_size,
+        newStoragePath, // r2_storage_path
         sourceFile.initialization_vector, 
         sourceFile.authentication_tag, 
         sourceFile.encryption_key_encrypted,
@@ -698,8 +701,8 @@ async function copyFile(req, res) {
     
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Copy file error:', error);
-    res.status(500).json({ error: 'Copy failed' });
+    console.error('❌ Copy file error:', error?.message || error);
+    res.status(500).json({ error: `Copy failed: ${error?.message || 'unknown error'}` });
   } finally {
     client.release();
   }
