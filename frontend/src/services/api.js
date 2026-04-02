@@ -223,10 +223,26 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    const requestUrl = error.config?.url || '';
     const isLoginEndpoint = error.config?.url?.includes('/auth/login');
+    const isChangePasswordEndpoint = requestUrl.includes('/profile/change-password');
     const hasToken = storage.getItem('token'); // Use unified storage
+    const errorMessage = error.response?.data?.error || '';
+    const isSessionAuthFailure = [
+      'Authentication required',
+      'Invalid or expired token',
+      'Session invalid or expired',
+      'Session expired',
+      'User account not found or inactive'
+    ].includes(errorMessage);
     
-    if (error.response?.status === 401 && !isLoginEndpoint && hasToken) {
+    if (
+      error.response?.status === 401 &&
+      !isLoginEndpoint &&
+      !isChangePasswordEndpoint &&
+      hasToken &&
+      isSessionAuthFailure
+    ) {
       // Session expired - clear storage and redirect
       storage.clearAuth();
       window.location.href = '/login';

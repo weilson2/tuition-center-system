@@ -328,11 +328,15 @@ function StorageTab() {
   const handleFilesSelected = (files, append = false) => {
     const validFiles = files.filter(file => {
       if (file.size > 500 * 1024 * 1024) {
-        alert(`${file.name} exceeds 500MB limit`);
+        showToast(`${file.name} exceeds 500MB limit`, 'error');
         return false;
       }
       return true;
     });
+
+    if (validFiles.length === 0) {
+      return;
+    }
 
     if (append) {
       // Add to existing files (remove duplicates by name)
@@ -388,7 +392,7 @@ function StorageTab() {
       loadData();
     } catch (error) {
       console.error('Upload error:', error);
-      alert(error.response?.data?.error || 'Upload failed');
+      showToast(error.response?.data?.error || 'Upload failed', 'error');
     } finally {
       setUploading(false);
     }

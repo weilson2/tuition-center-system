@@ -3,7 +3,6 @@ const pool = require('../config/database');
 // Get storage operation logs from actual storage tables
 async function getAuditLogs(req, res) {
   try {
-    console.log('📊 Storage logs request:', req.query);
     
     const {
       page = 1,
@@ -166,8 +165,6 @@ async function getAuditLogs(req, res) {
     
     const result = await pool.query(query, params);
     
-    console.log('✅ Found logs:', result.rows.length);
-    console.log('📋 Sample log:', result.rows[0]);
     
     res.json({
       logs: result.rows,

@@ -245,19 +245,6 @@ Tuition Center Team
   }
 }
 
-// Test email configuration
-async function testEmailConnection() {
-  try {
-    const transporter = createTransporter();
-    await transporter.verify();
-    console.log('✅ Email service is ready to send emails');
-    return true;
-  } catch (error) {
-    console.error('❌ Email service configuration error:', error);
-    return false;
-  }
-}
-
 async function sendTemporaryPasswordEmail(to, userFullName, temporaryPassword) {
   try {
     const transporter = createTransporter();
@@ -364,7 +351,6 @@ async function sendPasswordChangedConfirmationEmail(to, userFullName) {
 
 module.exports = {
   sendPasswordResetEmail,
-  testEmailConnection,
   sendTemporaryPasswordEmail,
   sendRoleStatusChangedEmail,
   sendEnrollmentConfirmationEmail,

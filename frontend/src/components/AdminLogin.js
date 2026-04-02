@@ -37,7 +37,6 @@ localStorage.removeItem('token');
 localStorage.removeItem('user');
 localStorage.removeItem('rememberMe');
 
-console.log('✅ Admin logged in (session only)');
 
 // Navigate to admin dashboard
 navigate('/admin/dashboard', { replace: true });

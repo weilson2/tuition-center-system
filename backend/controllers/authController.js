@@ -93,7 +93,6 @@ const minutesRemaining = Math.ceil((lockUntil - now) / 60000);
     }
 
     // Verify password
-    // Verify password
     const isPasswordValid = await comparePassword(password, user.password_hash);
 
     if (!isPasswordValid) {

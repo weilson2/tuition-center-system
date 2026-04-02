@@ -36,7 +36,6 @@ function Login() {
         localStorage.setItem('token', response.token);
         localStorage.setItem('user', JSON.stringify(response.user));
         localStorage.setItem('rememberMe', 'true');
-        console.log('✅ Saved to localStorage (persistent)');
       } else {
         // Session storage - use sessionStorage (deleted when browser closes)
         sessionStorage.setItem('token', response.token);
@@ -47,7 +46,6 @@ function Login() {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('rememberMe');
-        console.log('✅ Saved to sessionStorage (session only)');
       }
 
       // Navigate to dashboard
@@ -289,3 +287,4 @@ function Login() {
 }
 
 export default Login;
+

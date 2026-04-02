@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
+import { storage } from '../utils/storage';
 import '../styles/UserProfile.css';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -33,12 +34,21 @@ function UserProfile({ isOpen, onClose }) {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [deletingImage, setDeletingImage] = useState(false);
   const [deleteImageConfirmOpen, setDeleteImageConfirmOpen] = useState(false);
+  const passwordLogoutTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
       fetchProfile();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (passwordLogoutTimeoutRef.current) {
+        clearTimeout(passwordLogoutTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const fetchProfile = async () => {
     try {
@@ -123,9 +133,20 @@ function UserProfile({ isOpen, onClose }) {
         newPassword: '',
         confirmPassword: ''
       });
-      
-      setTimeout(() => {
-        alert('Password changed! Please login again.');
+
+      if (passwordLogoutTimeoutRef.current) {
+        clearTimeout(passwordLogoutTimeoutRef.current);
+      }
+
+      passwordLogoutTimeoutRef.current = setTimeout(async () => {
+        try {
+          await api.post('/auth/logout');
+        } catch (logoutError) {
+          console.error('Auto logout after password change failed:', logoutError);
+        } finally {
+          storage.clearAuth();
+          window.location.href = '/login';
+        }
       }, 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to change password');
@@ -134,17 +155,14 @@ function UserProfile({ isOpen, onClose }) {
 
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
-    console.log('📷 File selected:', file);
     
     if (!file) {
-      console.log('❌ No file selected');
       return;
     }
 
     // Validate file type
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!validTypes.includes(file.type)) {
-      console.log('❌ Invalid file type:', file.type);
       setError('Invalid file type. Please upload JPEG, PNG, GIF, or WebP images only.');
       return;
     }
@@ -152,22 +170,17 @@ function UserProfile({ isOpen, onClose }) {
     // Validate file size (5MB max)
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      console.log('❌ File too large:', file.size);
       setError('File size must be less than 5MB');
       return;
     }
 
-    console.log('✅ File validation passed');
     setSelectedImage(file);
     
     // Create preview
     const reader = new FileReader();
     reader.onloadend = () => {
-      console.log('✅ Preview created');
-      console.log('🎨 Setting showImageUpload to TRUE');
       setImagePreview(reader.result);
       setShowImageUpload(true);
-      console.log('📸 Modal should appear now');
     };
     reader.onerror = () => {
       console.error('❌ Error reading file');

@@ -667,8 +667,8 @@ async function copyFile(req, res) {
       `INSERT INTO files 
        (user_id, original_filename, file_type, file_size, r2_storage_path, 
         initialization_vector, authentication_tag, encryption_key_encrypted, 
-        sha256_checksum, file_scope, classroom_id, encrypted_filename, file_extension) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+        sha256_checksum, file_scope, classroom_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
        RETURNING *`,
       [
         userId, 
@@ -681,9 +681,7 @@ async function copyFile(req, res) {
         sourceFile.encryption_key_encrypted,
         sourceFile.sha256_checksum,
         requestedScope,
-        requestedClassroomId,
-        newStoragePath,
-        sourceFile.file_extension || null
+        requestedClassroomId
       ]
     );
     
