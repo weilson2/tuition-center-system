@@ -3,6 +3,7 @@ import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
 import api, { classroomAPI } from '../services/api';
 import { storage } from '../utils/storage';
+import SelectFromStorageModal from './SelectFromStorageModal';
 import '../styles/TeacherClassroomTab.css';
 
 function formatLocalDate(dateObj) {
@@ -517,6 +518,7 @@ function UploadMaterialModal({ classroomName, onClose, onSubmit, isUploading = f
   const [description, setDescription] = useState('');
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
+  const [showStorageModal, setShowStorageModal] = useState(false);
   const fileInputRef = useRef(null);
 
   const formatFileSize = (bytes) => {
@@ -530,6 +532,20 @@ function UploadMaterialModal({ classroomName, onClose, onSubmit, isUploading = f
     }
     setError('');
     setFile(nextFile);
+  };
+
+  const handleStorageSelect = (storageFile) => {
+    setFile({
+      name: storageFile.fileName,
+      size: storageFile.size,
+      fileId: storageFile.fileId,
+      fromStorage: true
+    });
+    setError('');
+    if (!title) {
+      setTitle(storageFile.fileName.replace(/\.[^/.]+$/, ""));
+    }
+    setShowStorageModal(false);
   };
 
   const handleSubmit = () => {
@@ -549,10 +565,12 @@ function UploadMaterialModal({ classroomName, onClose, onSubmit, isUploading = f
       xlsx: 'fa-file-excel'
     };
 
-    const formattedSize = formatFileSize(file.size);
+    const formattedSize = file.fromStorage ? file.size : formatFileSize(file.size);
 
     onSubmit({
-      file,
+      file: file.fromStorage ? null : file,
+      fromStorage: !!file.fromStorage,
+      fileId: file.fileId || null,
       title: title.trim() || file.name,
       description: description.trim(),
       fileName: file.name,
@@ -577,44 +595,57 @@ function UploadMaterialModal({ classroomName, onClose, onSubmit, isUploading = f
         </div>
 
         <div className="teacher-upload-modal-body">
-          <div
-            className={`teacher-upload-dropzone ${dragging ? 'active' : ''}`}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={(event) => {
-              event.preventDefault();
-              setDragging(false);
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragging(false);
-              setSelectedFile(event.dataTransfer.files?.[0]);
-            }}
-          >
-            <i className="fas fa-cloud-upload-alt"></i>
-            <p>{dragging ? 'Drop file to upload' : 'Drag and drop file here'}</p>
-            <input
-              ref={fileInputRef}
-              id="teacher-material-upload-input"
-              type="file"
-              className="teacher-hidden-input"
-              onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
-            />
-            <button
-              type="button"
-              className="teacher-browse-btn"
-              onClick={(event) => {
-                event.stopPropagation();
-                fileInputRef.current?.click();
-              }}
-              disabled={isUploading}
-            >
-              Browse Files
-            </button>
-          </div>
+          {!file && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div
+                className={`teacher-upload-dropzone ${dragging ? 'active' : ''}`}
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={(event) => {
+                  event.preventDefault();
+                  setDragging(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragging(false);
+                  setSelectedFile(event.dataTransfer.files?.[0]);
+                }}
+              >
+                <i className="fas fa-cloud-upload-alt"></i>
+                <p>{dragging ? 'Drop file to upload' : 'Drag and drop file here'}</p>
+                <input
+                  ref={fileInputRef}
+                  id="teacher-material-upload-input"
+                  type="file"
+                  className="teacher-hidden-input"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+                />
+                <button
+                  type="button"
+                  className="teacher-browse-btn"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={isUploading}
+                >
+                  Browse Files
+                </button>
+              </div>
+              <div style={{ textAlign: 'center', margin: '5px 0', color: '#666' }}>OR</div>
+              <button 
+                type="button" 
+                className="teacher-action-cta teacher-browse-btn" 
+                style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+                onClick={() => setShowStorageModal(true)}
+              >
+                <i className="fas fa-cloud"></i> Choose from Storage
+              </button>
+            </div>
+          )}
 
           {file && (
             <div className="teacher-upload-selected-file">
@@ -669,6 +700,12 @@ function UploadMaterialModal({ classroomName, onClose, onSubmit, isUploading = f
           </button>
         </div>
       </div>
+      {showStorageModal && (
+        <SelectFromStorageModal 
+          onClose={() => setShowStorageModal(false)}
+          onSelect={handleStorageSelect}
+        />
+      )}
     </div>
   );
 }
@@ -3233,41 +3270,57 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       return;
     }
 
-    if (!materialPayload?.file) {
+    if (!materialPayload?.file && !materialPayload?.fromStorage) {
       showMessage('Please choose a file to upload', 'error');
       return;
     }
 
     try {
       setUploadingMaterial(true);
-      const formData = new FormData();
-      formData.append('file', materialPayload.file);
-      formData.append('scope', 'classroom');
-      formData.append('classroomId', String(selectedClassroom.classroomId));
-      const uploadResponse = await api.post('/storage/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      let uploadedFileId = materialPayload?.fileId || null;
+      let fileSize = materialPayload?.size || 0;
+      let uploadedDate = formatLocalDate(new Date());
+      let normalizedFileName = materialPayload?.fileName || '';
 
-      const uploadedFile = uploadResponse?.data?.file;
-      const fileSize = uploadedFile?.file_size ?? materialPayload.file.size;
-      const uploadedDate = uploadedFile?.uploaded_at
-        ? formatLocalDate(new Date(uploadedFile.uploaded_at))
-        : formatLocalDate(new Date());
+      if (materialPayload.fromStorage && uploadedFileId) {
+        const copyResponse = await api.post(`/storage/files/${uploadedFileId}/copy`, {
+          scope: 'classroom',
+          classroomId: String(selectedClassroom.classroomId)
+        });
+        const copiedFile = copyResponse?.data?.file;
+        uploadedFileId = Number(copiedFile?.file_id || 0) || null;
+      } else if (!materialPayload.fromStorage) {
+        const formData = new FormData();
+        formData.append('file', materialPayload.file);
+        formData.append('scope', 'classroom');
+        formData.append('classroomId', String(selectedClassroom.classroomId));
+        const uploadResponse = await api.post('/storage/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        const uploadedFile = uploadResponse?.data?.file;
+        uploadedFileId = Number(uploadedFile?.file_id || 0) || null;
+        fileSize = uploadedFile?.file_size ?? materialPayload.file.size;
+        uploadedDate = uploadedFile?.uploaded_at
+          ? formatLocalDate(new Date(uploadedFile.uploaded_at))
+          : formatLocalDate(new Date());
+        normalizedFileName = String(uploadedFile?.original_filename || materialPayload.fileName);
+      }
+
       const normalizedTitle = String(
         materialPayload.title
         || materialPayload.description
-        || uploadedFile?.original_filename
-        || materialPayload.fileName
+        || normalizedFileName
       ).trim();
       const normalizedDescription = String(materialPayload.description || '').trim();
 
       const materialRecord = {
-        id: Number(uploadedFile?.file_id || Date.now()),
-        fileId: Number(uploadedFile?.file_id || 0),
+        id: Number(uploadedFileId || Date.now()),
+        fileId: Number(uploadedFileId || 0),
         title: normalizedTitle,
         description: normalizedDescription,
-        fileName: String(uploadedFile?.original_filename || materialPayload.fileName),
-        size: formatBytesLabel(fileSize),
+        fileName: normalizedFileName,
+        size: materialPayload.fromStorage ? materialPayload.size : formatBytesLabel(fileSize),
         uploadedDate,
         downloads: 0,
         icon: materialPayload.icon || 'fa-file'

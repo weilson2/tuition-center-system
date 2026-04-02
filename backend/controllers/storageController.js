@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
 const crypto = require('crypto');
 const { Transform } = require('stream');
 const { pipeline } = require('stream/promises');
@@ -611,6 +611,97 @@ async function uploadFile(req, res) {
     });
 
     res.status(500).json({ error: 'Upload failed' });
+  } finally {
+    client.release();
+  }
+}
+
+// Copy File
+async function copyFile(req, res) {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    await ensureFileScopeColumns(client);
+    const { fileId } = req.params;
+    const userId = req.user.userId;
+    const requestedScope = String(req.body?.scope || '').toLowerCase() === 'classroom' ? 'classroom' : 'personal';
+    const requestedClassroomId = Number.isInteger(Number(req.body?.classroomId)) ? Number(req.body?.classroomId) : null;
+    
+    const fileResult = await client.query(
+      'SELECT * FROM files WHERE file_id = $1 AND is_deleted = false AND user_id = $2',
+      [fileId, userId]
+    );
+    
+    if (fileResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Source file not found' });
+    }
+    
+    const sourceFile = fileResult.rows[0];
+    
+    if (requestedScope === 'personal') {
+      const userResult = await client.query('SELECT role, storage_quota FROM users WHERE user_id = $1', [userId]);
+      const user = userResult.rows[0];
+      const currentUsed = await getPersonalStorageUsedBytes(client, userId);
+      const quotaLimit = getEffectiveQuotaBytes(user.role, user.storage_quota);
+      
+      if (quotaLimit !== null && (currentUsed + Number(sourceFile.file_size)) > quotaLimit) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Storage quota exceeded' });
+      }
+    }
+    
+    const newStoragePath = `${requestedScope === 'classroom' ? 'classroom' : 'storage'}/${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+    
+    if (sourceFile.r2_storage_path) {
+      const copyCommand = new CopyObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        CopySource: encodeURI(`${process.env.R2_BUCKET_NAME}/${sourceFile.r2_storage_path}`),
+        Key: newStoragePath
+      });
+      await r2Client.send(copyCommand);
+    }
+    
+    const insertResult = await client.query(
+      `INSERT INTO files 
+       (user_id, original_filename, file_type, file_size, r2_storage_path, 
+        initialization_vector, authentication_tag, encryption_key_encrypted, 
+        sha256_checksum, file_scope, classroom_id, encrypted_filename, file_extension) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+       RETURNING *`,
+      [
+        userId, 
+        sourceFile.original_filename, 
+        sourceFile.file_type, 
+        sourceFile.file_size, 
+        newStoragePath,
+        sourceFile.initialization_vector, 
+        sourceFile.authentication_tag, 
+        sourceFile.encryption_key_encrypted,
+        sourceFile.sha256_checksum,
+        requestedScope,
+        requestedClassroomId,
+        newStoragePath,
+        sourceFile.file_extension || null
+      ]
+    );
+    
+    if (requestedScope === 'personal') {
+      await syncUserPersonalStorageUsed(client, userId);
+    }
+    
+    await client.query('COMMIT');
+    
+    res.json({
+      message: 'File copied successfully',
+      file: insertResult.rows[0]
+    });
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Copy file error:', error);
+    res.status(500).json({ error: 'Copy failed' });
   } finally {
     client.release();
   }
@@ -2079,6 +2170,7 @@ module.exports = {
   getSharedFiles,
   downloadFile,
   deleteFile,
+  copyFile,
   getStorageQuota,
   getFileDetails,
   renameFile,

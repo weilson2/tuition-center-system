@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { classroomAPI } from '../services/api';
 import api from '../services/api';
+import SelectFromStorageModal from './SelectFromStorageModal';
 import '../styles/StudentClassroomTab.css';
 
 function formatLocalDate(dateObj) {
@@ -224,10 +225,12 @@ function parseUploadedDate(value) {
 function SubmitAssignmentModal({ assignment, onClose, onSubmit, isSubmitting = false }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [comment, setComment] = useState('');
+  const [showStorageModal, setShowStorageModal] = useState(false);
 
   useEffect(() => {
     setSelectedFile(null);
     setComment('');
+    setShowStorageModal(false);
   }, [assignment]);
 
   if (!assignment) {
@@ -256,6 +259,16 @@ function SubmitAssignmentModal({ assignment, onClose, onSubmit, isSubmitting = f
     }
   };
 
+  const handleStorageSelect = (storageFile) => {
+    setSelectedFile({
+      name: storageFile.fileName,
+      size: storageFile.size,
+      fileId: storageFile.fileId,
+      fromStorage: true
+    });
+    setShowStorageModal(false);
+  };
+
   const handleSubmit = () => {
     if (!selectedFile) {
       return;
@@ -263,9 +276,11 @@ function SubmitAssignmentModal({ assignment, onClose, onSubmit, isSubmitting = f
 
     onSubmit({
       assignmentId: assignment.id,
-      file: selectedFile,
+      file: selectedFile.fromStorage ? null : selectedFile,
       fileName: selectedFile.name,
-      fileSize: formatFileSize(selectedFile.size),
+      fileSize: selectedFile.fromStorage ? selectedFile.size : formatFileSize(selectedFile.size),
+      fileId: selectedFile.fileId || null,
+      fromStorage: !!selectedFile.fromStorage,
       comment: comment.trim()
     });
   };
@@ -289,16 +304,27 @@ function SubmitAssignmentModal({ assignment, onClose, onSubmit, isSubmitting = f
           <label>Upload Your Work</label>
 
           {!selectedFile && (
-            <label
-              className="student-upload-dropzone"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={handleDrop}
-            >
-              <input type="file" onChange={handleFilePicked} />
-              <i className="fas fa-cloud-upload-alt"></i>
-              <p>Drag and drop your file here</p>
-              <span>Browse Files</span>
-            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <label
+                className="student-upload-dropzone"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleDrop}
+              >
+                <input type="file" onChange={handleFilePicked} />
+                <i className="fas fa-cloud-upload-alt"></i>
+                <p>Drag and drop your file here</p>
+                <span>Browse Files</span>
+              </label>
+              <div style={{ textAlign: 'center', margin: '5px 0', color: '#666' }}>OR</div>
+              <button 
+                type="button" 
+                className="secondary" 
+                style={{ width: '100%', padding: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+                onClick={() => setShowStorageModal(true)}
+              >
+                <i className="fas fa-cloud"></i> Choose from Storage
+              </button>
+            </div>
           )}
 
           {selectedFile && (
@@ -343,6 +369,12 @@ function SubmitAssignmentModal({ assignment, onClose, onSubmit, isSubmitting = f
           </button>
         </div>
       </div>
+      {showStorageModal && (
+        <SelectFromStorageModal 
+          onClose={() => setShowStorageModal(false)}
+          onSelect={handleStorageSelect}
+        />
+      )}
     </div>
   );
 }
@@ -1205,12 +1237,12 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
     }
   };
 
-  const handleAssignmentSubmit = async ({ assignmentId, file, fileName, fileSize, comment }) => {
+  const handleAssignmentSubmit = async ({ assignmentId, file, fileName, fileSize, comment, fromStorage, fileId }) => {
     if (!selectedClass) {
       return;
     }
 
-    if (!file) {
+    if (!file && !fromStorage) {
       showInfoDialog('Please select a file before submitting', 'Missing File');
       return;
     }
@@ -1222,27 +1254,36 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
     }
 
     let submissionDate = formatLocalDate(new Date());
-    let uploadedFileId = null;
+    let uploadedFileId = fileId || null;
     let normalizedFileName = fileName;
     let normalizedFileSize = fileSize;
 
     setSubmittingAssignment(true);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('scope', 'classroom');
-      formData.append('classroomId', String(selectedClassroomId));
-      formData.append('uploadCategory', 'submission');
+      if (fromStorage && uploadedFileId) {
+        const copyResponse = await api.post(`/storage/files/${uploadedFileId}/copy`, {
+          scope: 'classroom',
+          classroomId: String(selectedClassroomId)
+        });
+        const copiedFile = copyResponse?.data?.file;
+        uploadedFileId = Number(copiedFile?.file_id || 0) || null;
+      } else if (!fromStorage) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('scope', 'classroom');
+        formData.append('classroomId', String(selectedClassroomId));
+        formData.append('uploadCategory', 'submission');
 
-      const uploadResponse = await api.post('/storage/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+        const uploadResponse = await api.post('/storage/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
 
-      const uploadedFile = uploadResponse?.data?.file;
-      uploadedFileId = Number(uploadedFile?.file_id || 0) || null;
-      normalizedFileName = String(uploadedFile?.original_filename || fileName || file.name || 'Submission');
-      normalizedFileSize = fileSize || String(uploadedFile?.file_size || '');
+        const uploadedFile = uploadResponse?.data?.file;
+        uploadedFileId = Number(uploadedFile?.file_id || 0) || null;
+        normalizedFileName = String(uploadedFile?.original_filename || fileName || file.name || 'Submission');
+        normalizedFileSize = fileSize || String(uploadedFile?.file_size || '');
+      }
 
       const submitResponse = await classroomAPI.submitStudentAssignment(selectedClassroomId, assignmentId, {
         classroomId: selectedClassroomId,

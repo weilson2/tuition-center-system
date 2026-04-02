@@ -26,8 +26,8 @@ router.put('/files/:fileId/rename', storageController.renameFile);
 router.put('/files/:fileId/content', storageController.updateFileContent); 
 router.get('/files/:fileId/preview', storageController.previewFile); 
 router.get('/files/:fileId/download', storageController.downloadFile);
+router.post('/files/:fileId/copy', storageController.copyFile);
 router.delete('/files/:fileId', storageController.deleteFile);
-
 
 // Storage quota
 router.get('/quota', storageController.getStorageQuota);
