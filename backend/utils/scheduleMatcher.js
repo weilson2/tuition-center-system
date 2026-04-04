@@ -165,8 +165,60 @@ async function checkUserScheduleConflict(userId, targetClassroomId, pool) {
   }
 }
 
+/**
+ * Checks if a proposed classroom schedule conflicts with any of the teacher's existing classes (owner or co-teacher).
+ * @param {number} teacherUserId 
+ * @param {string} proposedSchedule The schedule they are trying to set ("Mon 08:15-10:00")
+ * @param {number} currentClassroomId Optional: ID of class being updated (to ignore current class)
+ * @param {Pool} pool Database pool to use for queries
+ * @returns {Promise<{ hasConflict: boolean, conflictingClassroomName?: string }>}
+ */
+async function checkTeacherScheduleConflict(teacherUserId, proposedSchedule, currentClassroomId, pool) {
+  try {
+    if (!proposedSchedule) return { hasConflict: false };
+
+    // Get all teacher states to find all classes
+    const teacherStateResult = await pool.query('SELECT state_json, teacher_user_id FROM teacher_classroom_states');
+    
+    for (const row of teacherStateResult.rows || []) {
+      const ownerTeacherId = Number(row.teacher_user_id);
+      const clsList = Array.isArray(row?.state_json?.classrooms) ? row.state_json.classrooms : [];
+      
+      for (const cls of clsList) {
+        const id = Number(cls.classroomId || cls.id);
+        
+        // Skip current class if we are updating it
+        if (currentClassroomId && id === Number(currentClassroomId)) continue;
+        
+        // A teacher has a conflict if:
+        // 1) They are the owner of the class
+        // 2) They are a co-teacher in the class
+        const isOwner = ownerTeacherId === Number(teacherUserId);
+        const coTeachers = Array.isArray(cls.coTeachers) ? cls.coTeachers : [];
+        const isCoTeacher = coTeachers.some(t => Number(t.teacherUserId || t.userId || t.id) === Number(teacherUserId));
+
+        if ((isOwner || isCoTeacher) && cls.classSchedule) {
+          if (hasOverlap(proposedSchedule, cls.classSchedule)) {
+            return {
+              hasConflict: true,
+              conflictingClassroomName: cls.classroomName || cls.title || 'Another Class'
+            };
+          }
+        }
+      }
+    }
+
+    return { hasConflict: false };
+  } catch (error) {
+    console.error('Error in checkTeacherScheduleConflict:', error);
+    return { hasConflict: false };
+  }
+}
+
 module.exports = {
   parseSchedule,
   hasOverlap,
-  checkUserScheduleConflict
+  checkUserScheduleConflict,
+  checkTeacherScheduleConflict
 };
+
