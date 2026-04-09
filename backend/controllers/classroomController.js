@@ -423,6 +423,7 @@ function normalizeClassroomCoTeachers(list) {
       teacherUserId,
       name: String(entry?.name || `Teacher ${teacherUserId}`),
       email: String(entry?.email || ''),
+      profilePictureUrl: entry?.profilePictureUrl || null,
       accessRole: normalizeTeacherAccessRole(entry?.accessRole)
     });
   });
@@ -497,6 +498,7 @@ async function getTeacherState(req, res) {
         ...classroom,
         ownerTeacherId: Number.isInteger(ownerTeacherId) && ownerTeacherId > 0 ? ownerTeacherId : teacherUserId,
         ownerTeacherName: String(classroom?.ownerTeacherName || req.user.fullName || 'Teacher'),
+        ownerProfilePictureUrl: classroom?.ownerProfilePictureUrl || (Number(ownerTeacherId) === Number(teacherUserId) ? (req.user.profilePictureUrl || null) : null),
         status: normalizeClassroomStatus(classroom?.status),
         coTeachers: normalizeClassroomCoTeachers(classroom?.coTeachers),
         assistantAccessRole: 'owner',
@@ -547,7 +549,8 @@ async function getTeacherState(req, res) {
         tcs.teacher_user_id,
         tcs.state_json,
         u.full_name AS owner_name,
-        u.teacher_title AS owner_teacher_title
+        u.teacher_title AS owner_teacher_title,
+        u.profile_picture_url AS owner_profile_picture_url
        FROM teacher_classroom_states tcs
        JOIN users u ON u.user_id = tcs.teacher_user_id
        WHERE tcs.teacher_user_id <> $1
@@ -631,7 +634,11 @@ async function getTeacherState(req, res) {
             || formatAnnouncementAuthorName(sharedRow.owner_name, sharedRow.owner_teacher_title)
             || `Teacher ${ownerTeacherId}`
           ),
-          coTeachers,
+          ownerProfilePictureUrl: sharedRow.owner_profile_picture_url || null,
+          coTeachers: coTeachers.map(ct => ({
+            ...ct,
+            profilePictureUrl: ct.profilePictureUrl || null // Will be enriched later or already present
+          })),
           assistantAccessRole: normalizeTeacherAccessRole(currentTeacherAccess.accessRole),
           isSharedClassroom: true,
           _ownerExplicit: true
@@ -745,13 +752,13 @@ async function getTeacherState(req, res) {
              ue.target_id AS classroom_id,
              u.user_id,
              u.full_name,
-             u.email
+             u.email,
+             u.profile_picture_url
            FROM user_enrollments ue
            JOIN users u ON u.user_id = ue.user_id
            WHERE ue.target_type = 'classroom'
              AND ue.enrollment_status = 'active'
-             AND ue.target_id = ANY($1::int[])
-             AND u.role = 'student'`,
+            AND ue.target_id = ANY($1::int[])`,
           [ownedClassroomIds]
         );
 
@@ -779,11 +786,12 @@ async function getTeacherState(req, res) {
             name: String(entry.full_name || `Student ${studentUserId}`),
             studentNo: `S${String(studentUserId).padStart(3, '0')}`,
             email: String(entry.email || ''),
+            profilePictureUrl: entry.profile_picture_url || null,
             status: 'Active'
           });
         });
 
-        ownedClassroomIds.forEach((classroomId) => {
+        for (const classroomId of ownedClassroomIds) {
           const rosterKey = String(classroomId);
           const existingRoster = syncedStudentsByClassroom[rosterKey]
             || syncedStudentsByClassroom[classroomId]
@@ -817,7 +825,32 @@ async function getTeacherState(req, res) {
           });
 
           syncedStudentsByClassroom[rosterKey] = Array.from(mergedByStudent.values());
-        });
+
+          // --- Lazy Enrollment Sync ---
+          // If the JSON roster has students but the enrollment join brought back 0 records for this specific classroom,
+          // it means the classroom was likely affected by a previous sync blocker. We repair it now.
+          const jsonRosterIds = (Array.isArray(existingRoster) ? existingRoster : [])
+            .map(s => Number(s?.studentId || s?.userId || s?.id))
+            .filter(id => Number.isInteger(id) && id > 0);
+          
+          if (jsonRosterIds.length > 0 && (!enrolledByClassroom.has(classroomId) || enrolledByClassroom.get(classroomId).length === 0)) {
+            console.log(`[LazySync] Repairing enrollment for classroom ${classroomId} with ${jsonRosterIds.length} students`);
+            for (const studentId of jsonRosterIds) {
+              try {
+                await pool.query(
+                  `INSERT INTO user_enrollments (user_id, target_type, target_id, enrollment_status, enrolled_at, enrolled_by)
+                   VALUES ($1, 'classroom', $2, 'active', CURRENT_TIMESTAMP, $3)
+                   ON CONFLICT (user_id, target_type, target_id) DO UPDATE 
+                   SET enrollment_status = 'active', enrolled_at = CURRENT_TIMESTAMP`,
+                  [studentId, classroomId, teacherUserId]
+                );
+              } catch (err) {
+                console.error(`LazySync failed for student ${studentId}:`, err.message);
+              }
+            }
+            shouldPersistCurrentTeacherState = true;
+          }
+        }
 
         const previousSerializedRoster = JSON.stringify(state.studentsByClassroom || {});
         const nextSerializedRoster = JSON.stringify(syncedStudentsByClassroom);
@@ -872,7 +905,8 @@ async function getTeacherState(req, res) {
           s.feedback,
           s.submitted_at,
           COALESCE(primary_file.file_type, matched_file.file_type) AS file_type,
-          u.full_name AS student_name
+          u.full_name AS student_name,
+          u.profile_picture_url AS student_profile_picture_url
          FROM classroom_assignment_submissions s
          JOIN users u ON u.user_id = s.student_user_id
          LEFT JOIN files primary_file ON primary_file.file_id = s.file_id
@@ -964,7 +998,8 @@ async function getTeacherState(req, res) {
           gradedByUserId: Number(existingRow?.gradedByUserId || 0) || null,
           gradedByName: String(existingRow?.gradedByName || ''),
           gradedAt: existingRow?.gradedAt || null,
-          assignmentTitle: assignmentMeta.assignmentTitle
+          assignmentTitle: assignmentMeta.assignmentTitle,
+          studentProfilePictureUrl: submission.student_profile_picture_url || null
         };
 
         const withoutCurrent = existingRows.filter((row) => Number(row?.id) !== Number(submission.submission_id));
@@ -984,6 +1019,80 @@ async function getTeacherState(req, res) {
       });
 
       state.gradingSubmissionsByAssignment = nextGradingSubmissionsByAssignment;
+    }
+
+    // --- Global Profile Picture Enrichment ---
+    const allUserIdsToEnrich = new Set();
+    state.classrooms.forEach(classroom => {
+      if (classroom.ownerTeacherId) allUserIdsToEnrich.add(Number(classroom.ownerTeacherId));
+      if (Array.isArray(classroom.coTeachers)) {
+        classroom.coTeachers.forEach(ct => {
+          if (ct.teacherUserId) allUserIdsToEnrich.add(Number(ct.teacherUserId));
+        });
+      }
+    });
+
+    Object.values(state.studentsByClassroom || {}).forEach(roster => {
+      if (Array.isArray(roster)) {
+        roster.forEach(student => {
+          const sid = Number(student.studentId || student.userId || student.id);
+          if (sid > 0) allUserIdsToEnrich.add(sid);
+        });
+      }
+    });
+
+    if (allUserIdsToEnrich.size > 0) {
+      try {
+        const profileRows = await pool.query(
+          'SELECT user_id, profile_picture_url FROM users WHERE user_id = ANY($1::int[])',
+          [Array.from(allUserIdsToEnrich)]
+        );
+        
+        const profileMap = new Map();
+        profileRows.rows.forEach(row => {
+          profileMap.set(Number(row.user_id), row.profile_picture_url);
+        });
+
+        // Apply enrichment to classrooms
+        state.classrooms.forEach(classroom => {
+          if (classroom.ownerTeacherId && profileMap.has(Number(classroom.ownerTeacherId))) {
+            classroom.ownerProfilePictureUrl = profileMap.get(Number(classroom.ownerTeacherId)) || classroom.ownerProfilePictureUrl;
+          }
+          if (Array.isArray(classroom.coTeachers)) {
+            classroom.coTeachers.forEach(ct => {
+              if (ct.teacherUserId && profileMap.has(Number(ct.teacherUserId))) {
+                ct.profilePictureUrl = profileMap.get(Number(ct.teacherUserId)) || ct.profilePictureUrl || null;
+              }
+            });
+          }
+        });
+
+        // Apply enrichment to rosters
+        Object.entries(state.studentsByClassroom || {}).forEach(([classId, roster]) => {
+          if (Array.isArray(roster)) {
+            roster.forEach(student => {
+              const sid = Number(student.studentId || student.userId || student.id);
+              if (sid > 0 && profileMap.has(sid)) {
+                student.profilePictureUrl = profileMap.get(sid) || student.profilePictureUrl || null;
+              }
+            });
+          }
+        });
+
+        // Apply enrichment to grading submissions
+        Object.values(state.gradingSubmissionsByAssignment || {}).forEach(submissions => {
+          if (Array.isArray(submissions)) {
+            submissions.forEach(sub => {
+              const sid = Number(sub.studentUserId || sub.userId || sub.studentId);
+              if (sid > 0 && profileMap.has(sid)) {
+                sub.studentProfilePictureUrl = profileMap.get(sid) || sub.studentProfilePictureUrl || null;
+              }
+            });
+          }
+        });
+      } catch (enrichError) {
+        console.warn('Failed to enrich profile pictures:', enrichError.message);
+      }
     }
 
     return res.json({ state, updatedAt: row.updated_at });
@@ -1142,10 +1251,6 @@ async function saveTeacherState(req, res) {
           ? configuredMaximumCapacity
           : null;
 
-        if (!Number.isInteger(maximumCapacity)) {
-          continue;
-        }
-
         const rosterKey = String(classroomId);
         const incomingRoster = state.studentsByClassroom?.[rosterKey] || state.studentsByClassroom?.[classroomId] || [];
         const existingRoster = existingState.studentsByClassroom?.[rosterKey] || existingState.studentsByClassroom?.[classroomId] || [];
@@ -1154,9 +1259,9 @@ async function saveTeacherState(req, res) {
         const existingCount = getUniqueStudentCountFromRoster(existingRoster);
         const rosterChanged = JSON.stringify(incomingRoster || []) !== JSON.stringify(existingRoster || []);
 
-        if (rosterChanged && incomingCount > maximumCapacity && incomingCount > existingCount) {
+        if (rosterChanged && maximumCapacity !== null && incomingCount > maximumCapacity && incomingCount > existingCount) {
           return res.status(409).json({
-            error: `Classroom \"${String(classroom?.classroomName || classroom?.title || classroomId)}\" is full (${maximumCapacity} students max)`
+            error: `Classroom "${String(classroom?.classroomName || classroom?.title || classroomId)}" is full (${maximumCapacity} students max)`
           });
         }
 

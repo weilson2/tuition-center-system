@@ -255,12 +255,25 @@ async function listUsers(req, res) {
     let paramCount = 0;
 
     if (search) {
+      const trimmedSearch = search.trim();
       paramCount += 1;
-      whereClauses.push(`(u.full_name ILIKE $${paramCount} OR u.email ILIKE $${paramCount})`);
-      params.push(`%${search.trim()}%`);
+      const searchParam = `%${trimmedSearch}%`;
+      
+      // Check for numeric ID or prefixed ID like S123, T456
+      const idMatch = trimmedSearch.match(/^[A-Za-z]?(\d+)$/);
+      
+      if (idMatch) {
+        const idValue = parseInt(idMatch[1], 10);
+        whereClauses.push(`(u.full_name ILIKE $${paramCount} OR u.email ILIKE $${paramCount} OR u.user_id = $${paramCount + 1})`);
+        params.push(searchParam, idValue);
+        paramCount += 1;
+      } else {
+        whereClauses.push(`(u.full_name ILIKE $${paramCount} OR u.email ILIKE $${paramCount})`);
+        params.push(searchParam);
+      }
     }
 
-    if (role) {
+    if (role && role !== 'all') {
       const normalizedRole = normalizeRole(role);
       if (ALLOWED_ROLES.includes(normalizedRole)) {
         paramCount += 1;
@@ -269,7 +282,13 @@ async function listUsers(req, res) {
       }
     }
 
-    if (status) {
+    if (req.query.level && req.query.level !== '' && req.query.level !== 'all') {
+      paramCount += 1;
+      whereClauses.push(`u.student_level = $${paramCount}`);
+      params.push(req.query.level);
+    }
+
+    if (status && status !== 'all') {
       const normalizedStatus = normalizeStatus(status);
       if (ALLOWED_STATUS.includes(normalizedStatus)) {
         paramCount += 1;
@@ -297,6 +316,7 @@ async function listUsers(req, res) {
         u.account_status,
         u.is_active,
         u.phone_number,
+        u.profile_picture_url,
         GREATEST(COALESCE(fs.storage_used, 0), COALESCE(u.storage_used, 0)) AS storage_used,
         CASE
           WHEN u.role = 'teacher' THEN ${STORAGE_QUOTA_BY_ROLE.teacher}

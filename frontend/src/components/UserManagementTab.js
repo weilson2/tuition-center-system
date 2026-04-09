@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { adminUserAPI } from '../services/api';
+import { adminUserAPI, classroomAPI } from '../services/api';
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
 import '../styles/UserManagement.css';
@@ -301,8 +301,10 @@ function UserManagementTab({ currentUser }) {
   const [resettingPasswordUserId, setResettingPasswordUserId] = useState(null);
 
   const [selectedEnrollUserIds, setSelectedEnrollUserIds] = useState([]);
-  const [enrollData, setEnrollData] = useState({ targetType: 'classroom', targetId: '' });
+  const [enrollData, setEnrollData] = useState({ targetType: 'classroom', targetId: '', role: 'student', level: '' });
   const [enrollLoading, setEnrollLoading] = useState(false);
+  const [allClassrooms, setAllClassrooms] = useState([]);
+  const [loadingClassrooms, setLoadingClassrooms] = useState(false);
 
   const [rbacData, setRbacData] = useState({ roles: [], permissions: [], matrix: {} });
   const [rbacLoading, setRbacLoading] = useState(false);
@@ -394,8 +396,9 @@ function UserManagementTab({ currentUser }) {
         page,
         limit: pagination.limit,
         search: filterOverrides.search !== undefined ? filterOverrides.search : userFilters.search,
-        role: filterOverrides.role !== undefined ? filterOverrides.role : userFilters.role,
-        status: filterOverrides.status !== undefined ? filterOverrides.status : userFilters.status
+        role: filterOverrides.role !== undefined ? filterOverrides.role : (section === 'enroll' ? enrollData.role : userFilters.role),
+        status: filterOverrides.status !== undefined ? filterOverrides.status : userFilters.status,
+        level: filterOverrides.level !== undefined ? filterOverrides.level : (section === 'enroll' ? enrollData.level : '')
       });
       setUsers(response.users || []);
       setUserStats(response.stats || {
@@ -409,6 +412,18 @@ function UserManagementTab({ currentUser }) {
       showMessage(error.response?.data?.error || 'Failed to load users', 'error');
     } finally {
       setLoadingUsers(false);
+    }
+  };
+
+  const fetchAdminClassrooms = async () => {
+    try {
+      setLoadingClassrooms(true);
+      const response = await classroomAPI.getAdminClassrooms();
+      setAllClassrooms(response.classrooms || []);
+    } catch (error) {
+      showMessage(error.response?.data?.error || 'Failed to load classrooms', 'error');
+    } finally {
+      setLoadingClassrooms(false);
     }
   };
 
@@ -439,6 +454,9 @@ function UserManagementTab({ currentUser }) {
   useEffect(() => {
     if (section === 'export' || section === 'enroll' || section === 'import') {
       fetchUsers(1);
+    }
+    if (section === 'enroll') {
+      fetchAdminClassrooms();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
@@ -915,7 +933,7 @@ function UserManagementTab({ currentUser }) {
                 <i className="fas fa-search"></i>
                 <input
                   type="text"
-                  placeholder="Search users..."
+                  placeholder="Search users by name/email/ID..."
                   value={userFilters.search}
                   onChange={(event) => setUserFilters((prev) => ({ ...prev, search: event.target.value }))}
                   onKeyDown={(event) => {
@@ -989,7 +1007,13 @@ function UserManagementTab({ currentUser }) {
                   <tr key={item.user_id}>
                     <td>
                       <div className="um-user-cell">
-                        <span className={`um-user-avatar ${role}`}>{String(item.full_name || 'U').charAt(0).toUpperCase()}</span>
+                        <span className={`um-user-avatar ${role}`}>
+                          {item.profile_picture_url ? (
+                            <img src={item.profile_picture_url} alt={item.full_name} />
+                          ) : (
+                            String(item.full_name || 'U').charAt(0).toUpperCase()
+                          )}
+                        </span>
                         <div>
                           <strong>{item.full_name}</strong>
                           <p>
@@ -1073,23 +1097,48 @@ function UserManagementTab({ currentUser }) {
           <div className="um-filter-grid">
             <input
               type="text"
-              placeholder="Search users by name/email"
+              placeholder="Search users by name/email/ID"
               value={userFilters.search}
               onChange={(event) => setUserFilters((prev) => ({ ...prev, search: event.target.value }))}
             />
             <select
-              value={enrollData.targetType}
-              onChange={(event) => setEnrollData((prev) => ({ ...prev, targetType: event.target.value }))}
-            >
-              <option value="classroom">Classroom</option>
-              <option value="course">Course</option>
-            </select>
-            <input
-              type="number"
-              placeholder="Classroom/Course ID"
               value={enrollData.targetId}
               onChange={(event) => setEnrollData((prev) => ({ ...prev, targetId: event.target.value }))}
-            />
+              disabled={loadingClassrooms}
+            >
+              <option value="">{loadingClassrooms ? 'Loading classrooms...' : 'Select Classroom'}</option>
+              {allClassrooms.map((cls) => (
+                <option key={cls.classroomId} value={cls.classroomId}>
+                  [{cls.classroomId}] {cls.classroomName} ({cls.ownerTeacherName})
+                </option>
+              ))}
+            </select>
+            <select
+              value={enrollData.role}
+              onChange={(event) => {
+                const newRole = event.target.value;
+                setEnrollData((prev) => ({ 
+                  ...prev, 
+                  role: newRole,
+                  level: newRole === 'teacher' ? '' : prev.level 
+                }));
+              }}
+            >
+              <option value="">All Roles</option>
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+            </select>
+            {enrollData.role !== 'teacher' && (
+              <select
+                value={enrollData.level}
+                onChange={(event) => setEnrollData((prev) => ({ ...prev, level: event.target.value }))}
+              >
+                <option value="">All Levels</option>
+                {STUDENT_LEVEL_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            )}
             <button className="um-btn-secondary" onClick={() => fetchUsers(1)}>
               Search
             </button>
@@ -1121,7 +1170,13 @@ function UserManagementTab({ currentUser }) {
                       </td>
                       <td>
                         <div className="um-user-cell">
-                          <span className={`um-user-avatar ${role}`}>{String(item.full_name || 'U').charAt(0).toUpperCase()}</span>
+                          <span className={`um-user-avatar ${role}`}>
+                            {item.profile_picture_url ? (
+                              <img src={item.profile_picture_url} alt={item.full_name} />
+                            ) : (
+                              String(item.full_name || 'U').charAt(0).toUpperCase()
+                            )}
+                          </span>
                           <div>
                             <strong>{item.full_name}</strong>
                             <p>{getUserCode(item, index)}</p>
@@ -1371,7 +1426,13 @@ function UserManagementTab({ currentUser }) {
                       </td>
                       <td>
                         <div className="um-user-cell">
-                          <span className={`um-user-avatar ${role}`}>{String(item.full_name || 'U').charAt(0).toUpperCase()}</span>
+                          <span className={`um-user-avatar ${role}`}>
+                            {item.profile_picture_url ? (
+                              <img src={item.profile_picture_url} alt={item.full_name} />
+                            ) : (
+                              String(item.full_name || 'U').charAt(0).toUpperCase()
+                            )}
+                          </span>
                           <div>
                             <strong>{item.full_name}</strong>
                             <p>{getUserCode(item, index)} • {item.email}</p>

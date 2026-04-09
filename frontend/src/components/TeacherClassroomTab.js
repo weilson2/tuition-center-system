@@ -1091,6 +1091,7 @@ function AssignmentSubmissionsModal({ assignment, rows, onClose, onOpenReview, o
 
 function ManageStudentsModal({ classroomName, classroomGradeLevel, enrolledStudents, allStudents, onClose, onSave }) {
   const [localStudents, setLocalStudents] = useState(enrolledStudents);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const normalizeLevel = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const hasSpecificClassLevel = Boolean(normalizeLevel(classroomGradeLevel));
@@ -1103,7 +1104,27 @@ function ManageStudentsModal({ classroomName, classroomGradeLevel, enrolledStude
   };
 
   const enrolledIds = new Set(localStudents.map((student) => student.studentId));
-  const availableStudents = allStudents.filter((student) => !enrolledIds.has(student.studentId) && isLevelAllowed(student));
+
+  const filteredEnrolled = localStudents.filter((student) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      String(student?.name || '').toLowerCase().includes(query) ||
+      String(student?.studentNo || '').toLowerCase().includes(query)
+    );
+  });
+
+  const availableStudents = allStudents.filter((student) => {
+    if (enrolledIds.has(student.studentId)) return false;
+    if (!isLevelAllowed(student)) return false;
+
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      String(student?.name || '').toLowerCase().includes(query) ||
+      String(student?.studentNo || '').toLowerCase().includes(query)
+    );
+  });
 
   const removeStudent = (studentId) => {
     setLocalStudents((previous) => previous.filter((student) => student.studentId !== studentId));
@@ -1137,44 +1158,84 @@ function ManageStudentsModal({ classroomName, classroomGradeLevel, enrolledStude
           </button>
         </div>
 
-        <div className="teacher-manage-grid">
-          <div>
-            <h4>Enrolled Students ({localStudents.length})</h4>
-            <div className="teacher-manage-list">
-              {localStudents.map((student) => (
-                <div key={student.studentId} className="teacher-manage-item enrolled">
-                  <div className="teacher-manage-student-meta">
-                    <div className="teacher-manage-avatar">{student.name.charAt(0).toUpperCase()}</div>
-                    <span>
-                      <strong>{student.name}</strong>
-                      <small>{student.studentNo}</small>
-                    </span>
-                  </div>
-                  <button className="danger-link" onClick={() => removeStudent(student.studentId)}>Remove</button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <h4>Available Students ({availableStudents.length})</h4>
-            {hasSpecificClassLevel && !isAllLevelClassroom && (
-              <p className="teacher-action-hint">Only {classroomGradeLevel} students can be added.</p>
+        <div className="teacher-manage-search-wrap">
+          <div className="teacher-manage-search-box">
+            <i className="fas fa-search"></i>
+            <input
+              type="text"
+              placeholder="Search students by name or student number..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+            {searchQuery && (
+              <button type="button" className="teacher-search-clear" onClick={() => setSearchQuery('')}>
+                <i className="fas fa-times-circle"></i>
+              </button>
             )}
-            <div className="teacher-manage-list">
-              {availableStudents.map((student) => (
-                <div key={student.studentId} className="teacher-manage-item available">
-                  <div className="teacher-manage-student-meta">
-                    <div className="teacher-manage-avatar muted">{student.name.charAt(0).toUpperCase()}</div>
-                    <span>
-                      <strong>{student.name}</strong>
-                      <small>{student.studentNo}</small>
-                    </span>
+          </div>
+        </div>
+
+        <div className="teacher-manage-body">
+          <div className="teacher-manage-grid">
+            <div className="teacher-manage-column enrolled-col">
+              <div className="teacher-manage-header">
+                <h4>Enrolled Students ({filteredEnrolled.length})</h4>
+              </div>
+              <div className="teacher-manage-list">
+                {filteredEnrolled.map((student) => (
+                  <div key={student.studentId} className="teacher-manage-item enrolled">
+                    <div className="teacher-manage-student-meta">
+                      <div className="teacher-manage-avatar">
+                        {student.profilePictureUrl ? (
+                          <img src={student.profilePictureUrl} alt={student.name} />
+                        ) : (
+                          student.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <span>
+                        <strong>{student.name}</strong>
+                        <small>{student.studentNo}</small>
+                      </span>
+                    </div>
+                    <button className="danger-link" onClick={() => removeStudent(student.studentId)}>Remove</button>
                   </div>
-                  <button className="add-link" onClick={() => addStudent(student)}>Add</button>
-                </div>
-              ))}
-              {availableStudents.length === 0 && <p className="teacher-action-hint">No available students</p>}
+                ))}
+                {filteredEnrolled.length === 0 && (
+                  <p className="teacher-action-hint">{searchQuery ? 'No matching students found' : 'No students enrolled'}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="teacher-manage-column available-col">
+              <div className="teacher-manage-header">
+                <h4>Available Students ({availableStudents.length})</h4>
+                {hasSpecificClassLevel && !isAllLevelClassroom && (
+                  <span className="teacher-grade-badge">{classroomGradeLevel} Only</span>
+                )}
+              </div>
+              <div className="teacher-manage-list">
+                {availableStudents.map((student) => (
+                  <div key={student.studentId} className="teacher-manage-item available">
+                    <div className="teacher-manage-student-meta">
+                      <div className="teacher-manage-avatar muted">
+                        {student.profilePictureUrl ? (
+                          <img src={student.profilePictureUrl} alt={student.name} />
+                        ) : (
+                          student.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <span>
+                        <strong>{student.name}</strong>
+                        <small>{student.studentNo}</small>
+                      </span>
+                    </div>
+                    <button className="add-link" onClick={() => addStudent(student)}>Add</button>
+                  </div>
+                ))}
+                {availableStudents.length === 0 && (
+                  <p className="teacher-action-hint">{searchQuery ? 'No matching students found' : 'No available students'}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1242,7 +1303,13 @@ function ManageTeachersModal({
               {localTeachers.map((teacher) => (
                 <div key={teacher.teacherUserId} className="teacher-manage-item enrolled">
                   <div className="teacher-manage-student-meta">
-                    <div className="teacher-manage-avatar">{String(teacher.name || 'T').charAt(0).toUpperCase()}</div>
+                    <div className="teacher-manage-avatar">
+                      {teacher.profilePictureUrl ? (
+                        <img src={teacher.profilePictureUrl} alt={teacher.name} />
+                      ) : (
+                        String(teacher.name || 'T').charAt(0).toUpperCase()
+                      )}
+                    </div>
                     <span>
                       <strong>{teacher.name}</strong>
                       <small>{teacher.email || `T${String(teacher.teacherUserId).padStart(3, '0')}`}</small>
@@ -1272,7 +1339,13 @@ function ManageTeachersModal({
               {availableTeachers.map((teacher) => (
                 <div key={teacher.teacherUserId} className="teacher-manage-item available">
                   <div className="teacher-manage-student-meta">
-                    <div className="teacher-manage-avatar muted">{String(teacher.name || 'T').charAt(0).toUpperCase()}</div>
+                    <div className="teacher-manage-avatar muted">
+                      {teacher.profilePictureUrl ? (
+                        <img src={teacher.profilePictureUrl} alt={teacher.name} />
+                      ) : (
+                        String(teacher.name || 'T').charAt(0).toUpperCase()
+                      )}
+                    </div>
                     <span>
                       <strong>{teacher.name}</strong>
                       <small>{teacher.email}</small>
@@ -1400,13 +1473,7 @@ function TakeAttendanceModal({ classroomName, students, initialDate, onClose, on
   }, [students]);
 
   const [date, setDate] = useState(initialDate || formatLocalDate(new Date()));
-  const displayStudentNoById = useMemo(() => {
-    const next = {};
-    sortedStudents.forEach((student, index) => {
-      next[student.studentId] = `S${String(index + 1).padStart(3, '0')}`;
-    });
-    return next;
-  }, [sortedStudents]);
+
 
   const [statusMap, setStatusMap] = useState(() => {
     const seed = {};
@@ -1469,10 +1536,16 @@ function TakeAttendanceModal({ classroomName, students, initialDate, onClose, on
                 onClick={() => toggleStudent(student.studentId)}
               >
                 <div className="student-main">
-                  <div className="student-avatar">{student.name.charAt(0).toUpperCase()}</div>
-                  <div>
+                  <div className="student-avatar">
+                    {student.profilePictureUrl ? (
+                      <img src={student.profilePictureUrl} alt={student.name} />
+                    ) : (
+                      student.name.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="student-info">
                     <strong>{student.name}</strong>
-                      <p>{displayStudentNoById[student.studentId] || student.studentNo}</p>
+                      <p>{student.studentNo}</p>
                   </div>
                 </div>
                 <span className={`teacher-toggle-dot ${statusMap[student.studentId] ? 'on' : ''}`}></span>
@@ -1512,13 +1585,7 @@ function AttendanceRecordModal({ classroomName, dateKey, students, initialStatus
     });
   }, [students]);
 
-  const displayStudentNoById = useMemo(() => {
-    const next = {};
-    sortedStudents.forEach((student, index) => {
-      next[student.studentId] = `S${String(index + 1).padStart(3, '0')}`;
-    });
-    return next;
-  }, [sortedStudents]);
+
 
   const [statusMap, setStatusMap] = useState(() => ({ ...initialStatusMap }));
 
@@ -1575,10 +1642,16 @@ function AttendanceRecordModal({ classroomName, dateKey, students, initialStatus
                   onClick={() => toggleStudent(student.studentId)}
                 >
                   <div className="student-main">
-                    <div className="student-avatar">{student.name.charAt(0).toUpperCase()}</div>
-                    <div>
+                    <div className="student-avatar">
+                      {student.profilePictureUrl ? (
+                        <img src={student.profilePictureUrl} alt={student.name} />
+                      ) : (
+                        student.name.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div className="student-info">
                       <strong>{student.name}</strong>
-                      <p>{displayStudentNoById[student.studentId] || student.studentNo}</p>
+                      <p>{student.studentNo}</p>
                     </div>
                   </div>
                   <span className={`teacher-record-status-pill ${isPresent ? 'present' : 'absent'}`}>
@@ -1609,8 +1682,14 @@ function StudentAttendanceModal({ classroomName, student, historyRows, onClose }
       <div className="teacher-action-modal teacher-student-attendance-modal">
         <div className="teacher-action-modal-header">
           <div className="teacher-student-modal-header-main">
-            <div className="student-avatar">{student.name.charAt(0).toUpperCase()}</div>
-            <div>
+            <div className="student-avatar">
+              {student.profilePictureUrl ? (
+                <img src={student.profilePictureUrl} alt={student.name} />
+              ) : (
+                student.name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div className="student-info">
               <h3>{student.name}</h3>
               <p>{student.studentNo} · {classroomName}</p>
             </div>
@@ -2411,6 +2490,7 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
           studentNo: `S${String(item.user_id).padStart(3, '0')}`,
           email: item.email,
           studentLevel: item.student_level || '',
+          profilePictureUrl: item.profile_picture_url || null,
           status: 'Active'
         }));
 
@@ -2419,7 +2499,8 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
         .map((item) => ({
           teacherUserId: Number(item.user_id),
           name: String(item.full_name || `Teacher ${item.user_id}`),
-          email: String(item.email || '')
+          email: String(item.email || ''),
+          profilePictureUrl: item.profile_picture_url || null
         }))
         .filter((item) => Number.isInteger(item.teacherUserId) && item.teacherUserId > 0);
 
@@ -3958,7 +4039,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
               <div className="teacher-student-list-detail">
                 {selectedClassStudents.map((student) => (
                   <div key={student.studentId} className="teacher-student-item-detail">
-                    <div className="teacher-student-avatar">{student.name.charAt(0)}</div>
+                    <div className="teacher-student-avatar">
+                      {student.profilePictureUrl ? (
+                        <img src={student.profilePictureUrl} alt={student.name} />
+                      ) : (
+                        student.name.charAt(0)
+                      )}
+                    </div>
                     <div>
                       <strong>{student.name}</strong>
                       <p>{student.studentNo} · {student.email}</p>
@@ -3983,7 +4070,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
               <div className="teacher-student-list-detail">
                 <div className="teacher-student-item-detail">
-                  <div className="teacher-student-avatar">{String(selectedClassroom?.ownerTeacherName || 'T').charAt(0).toUpperCase()}</div>
+                  <div className="teacher-student-avatar">
+                    {selectedClassroom?.ownerProfilePictureUrl ? (
+                      <img src={selectedClassroom.ownerProfilePictureUrl} alt={selectedClassroom.ownerTeacherName} />
+                    ) : (
+                      String(selectedClassroom?.ownerTeacherName || 'T').charAt(0).toUpperCase()
+                    )}
+                  </div>
                   <div>
                     <strong>{selectedClassroom?.ownerTeacherName || 'Owner Teacher'}</strong>
                     <p>Owner · Higher Priority</p>
@@ -3992,7 +4085,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
                 {selectedClassCoTeachers.map((teacher) => (
                   <div key={teacher.teacherUserId} className="teacher-student-item-detail">
-                    <div className="teacher-student-avatar">{String(teacher.name || 'T').charAt(0).toUpperCase()}</div>
+                    <div className="teacher-student-avatar">
+                      {teacher.profilePictureUrl ? (
+                        <img src={teacher.profilePictureUrl} alt={teacher.name} />
+                      ) : (
+                        String(teacher.name || 'T').charAt(0).toUpperCase()
+                      )}
+                    </div>
                     <div>
                       <strong>{teacher.name}</strong>
                       <p>{normalizeTeacherAccessRole(teacher.accessRole) === 'teacher' ? 'Assistant Teacher (Can Create Assignment)' : 'Assistant Teacher (View Only)'}</p>
@@ -4197,7 +4296,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
               {attendanceStudentRows.map((student) => (
                 <div key={student.studentId} className="teacher-student-attendance-row">
                   <div className="student-main">
-                    <div className="student-avatar">{student.name.charAt(0)}</div>
+                    <div className="student-avatar">
+                      {student.profilePictureUrl ? (
+                        <img src={student.profilePictureUrl} alt={student.name} />
+                      ) : (
+                        student.name.charAt(0)
+                      )}
+                    </div>
                     <div>
                       <strong>{student.name}</strong>
                       <p>{student.studentNo}</p>
@@ -4373,8 +4478,14 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
                           <td><input type="checkbox" /></td>
                           <td>
                             <div className="teacher-grading-student-cell">
-                              <div className="teacher-grading-student-avatar">{row.studentName.charAt(0)}</div>
-                              <div>
+                              <div className="teacher-grading-student-avatar">
+                                {row.studentProfilePictureUrl ? (
+                                  <img src={row.studentProfilePictureUrl} alt={row.studentName} />
+                                ) : (
+                                  row.studentName.charAt(0)
+                                )}
+                              </div>
+                              <div className="student-info">
                                 <strong>{row.studentName}</strong>
                                 <p>{row.studentNo}</p>
                               </div>

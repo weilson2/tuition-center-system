@@ -76,7 +76,8 @@ async function authenticateToken(req, res, next) {
       userId: user.user_id,
       email: user.email,
       role: user.role,
-      fullName: user.full_name
+      fullName: user.full_name,
+      profilePictureUrl: user.profile_picture_url || null
     };
     req.sessionId = session.session_id;
 
