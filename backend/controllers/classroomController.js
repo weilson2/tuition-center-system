@@ -1,5 +1,5 @@
 const pool = require('../config/database');
-const { checkUserScheduleConflict, checkTeacherScheduleConflict, hasOverlap } = require('../utils/scheduleMatcher');
+const { checkUserScheduleConflict, checkTeacherScheduleConflict, checkVenueScheduleConflict, hasOverlap, getClassroomSchedule } = require('../utils/scheduleMatcher');
 
 let ensuredTables = false;
 
@@ -1213,12 +1213,14 @@ async function saveTeacherState(req, res) {
       archivedClassrooms: Array.isArray(existingState.archivedClassrooms) ? existingState.archivedClassrooms : []
     };
 
-    // --- Teacher Schedule Conflict Validation ---
+    // --- Comprehensive Schedule Conflict Validation ---
     for (let i = 0; i < normalizedFinalOwnedClassrooms.length; i++) {
       const cls = normalizedFinalOwnedClassrooms[i];
       if (!cls.classSchedule || cls.classSchedule === '-' || normalizeClassroomStatus(cls.status) === 'Archived') continue;
 
-      // Internal overlap check: against other classes in the same teacher state
+      const currentClassroomId = Number(cls.classroomId || cls.id);
+
+      // 1. Internal owner overlap check: against other classes in the same teacher state
       for (let j = i + 1; j < normalizedFinalOwnedClassrooms.length; j++) {
         const otherCls = normalizedFinalOwnedClassrooms[j];
         if (!otherCls.classSchedule || otherCls.classSchedule === '-' || normalizeClassroomStatus(otherCls.status) === 'Archived') continue;
@@ -1230,12 +1232,36 @@ async function saveTeacherState(req, res) {
         }
       }
 
-      // External overlap check: against classes where this teacher is a co-teacher (owned by others)
-      const externalConflict = await checkTeacherScheduleConflict(teacherUserId, cls.classSchedule, Number(cls.classroomId || cls.id), pool);
+      // 2. External conflict for Owner: against classes where this teacher is a co-teacher (owned by others)
+      const externalConflict = await checkTeacherScheduleConflict(teacherUserId, cls.classSchedule, currentClassroomId, pool);
       if (externalConflict.hasConflict) {
         return res.status(409).json({
           error: `Schedule conflict: You already have a class "${externalConflict.conflictingClassroomName}" at ${cls.classSchedule} (as owner or co-teacher).`
         });
+      }
+
+      // 3. Co-teacher (Assistant) conflict check
+      const coTeachers = Array.isArray(cls.coTeachers) ? cls.coTeachers : [];
+      for (const ct of coTeachers) {
+        const ctId = Number(ct.teacherUserId || ct.userId || ct.id);
+        if (Number.isInteger(ctId) && ctId > 0 && ctId !== teacherUserId) {
+          const assistantConflict = await checkTeacherScheduleConflict(ctId, cls.classSchedule, currentClassroomId, pool);
+          if (assistantConflict.hasConflict) {
+            return res.status(409).json({
+              error: `Assistant conflict: ${ct.name || `Teacher ${ctId}`} already has a class "${assistantConflict.conflictingClassroomName}" at ${cls.classSchedule}.`
+            });
+          }
+        }
+      }
+
+      // 4. Venue conflict check
+      if (cls.venueId) {
+        const venueConflict = await checkVenueScheduleConflict(cls.venueId, cls.classSchedule, currentClassroomId, pool);
+        if (venueConflict.hasConflict) {
+          return res.status(409).json({
+            error: `Venue crash: The selected venue is already occupied by class "${venueConflict.conflictingClassroomName}" during ${cls.classSchedule}.`
+          });
+        }
       }
     }
 
@@ -1291,17 +1317,24 @@ async function saveTeacherState(req, res) {
           }
 
           if (addedIds.length > 0) {
+            const enrollmentConflicts = [];
             for (const newStudentId of addedIds) {
               // --- Student Schedule Conflict Validation ---
-              const studentConflict = await checkUserScheduleConflict(newStudentId, classroomId, pool);
+              const studentConflict = await checkUserScheduleConflict(newStudentId, classroomId, pool, getClassroomSchedule(classroom));
               if (studentConflict.hasConflict) {
-                // Find student name for better error message
                 const studentName = (incomingRoster.find(s => Number(s?.studentId || s?.userId || s?.id) === newStudentId))?.name || `Student ${newStudentId}`;
-                return res.status(409).json({
-                  error: `Student ${studentName} already has a conflicting class: ${studentConflict.conflictingClassroomName}.`
-                });
+                enrollmentConflicts.push({ studentName, conflictingClassroomName: studentConflict.conflictingClassroomName });
               }
+            }
 
+            if (enrollmentConflicts.length > 0) {
+              const conflictMessages = enrollmentConflicts.map(c => `${c.studentName} (${c.conflictingClassroomName || 'another class'})`);
+              return res.status(409).json({
+                error: `Schedule conflict(s) detected for: ${conflictMessages.join(', ')}. No changes were saved.`
+              });
+            }
+
+            for (const newStudentId of addedIds) {
               await pool.query(
                 `INSERT INTO user_enrollments (user_id, target_type, target_id, enrollment_status, enrolled_at, enrolled_by)
                  VALUES ($1, 'classroom', $2, 'active', CURRENT_TIMESTAMP, $3)
@@ -1744,6 +1777,30 @@ async function getStudentClasses(req, res) {
           ? Number(((attendanceStats.present / attendanceStats.sessions) * 100).toFixed(1))
           : null;
 
+        const subjectLower = String(classroom.subject || '').toLowerCase();
+        let displayIcon = 'fa-book';
+        let displayTone = 'blue';
+
+        if (subjectLower.includes('physics')) {
+          displayIcon = 'fa-atom';
+          displayTone = 'purple';
+        } else if (subjectLower.includes('chemistry') || subjectLower.includes('science') || subjectLower.includes('sains')) {
+          displayIcon = 'fa-flask';
+          displayTone = 'green';
+        } else if (subjectLower.includes('biology') || subjectLower.includes('biologi')) {
+          displayIcon = 'fa-microscope';
+          displayTone = 'orange';
+        } else if (subjectLower.includes('math')) {
+          displayIcon = 'fa-calculator';
+          displayTone = 'blue';
+        } else if (subjectLower.includes('history') || subjectLower.includes('sejarah') || subjectLower.includes('geography') || subjectLower.includes('geografi')) {
+          displayIcon = 'fa-landmark';
+          displayTone = 'brown';
+        } else if (subjectLower.includes('english') || subjectLower.includes('melayu') || subjectLower.includes('language')) {
+          displayIcon = 'fa-language';
+          displayTone = 'red';
+        }
+
         const classPayload = {
           id: classIdentity,
           classroomId: classId,
@@ -1752,8 +1809,8 @@ async function getStudentClasses(req, res) {
           subject: String(classroom.subject || ''),
           teacher: teacherName,
           schedule: String(classroom.classSchedule || classroom.schedule || '-'),
-          icon: 'fa-book',
-          tone: String(classroom.subject || '').toLowerCase().includes('chemistry') ? 'green' : 'blue',
+          icon: displayIcon,
+          tone: displayTone,
           attendance: {
             sessions: attendanceStats.sessions,
             present: attendanceStats.present,
@@ -2349,7 +2406,7 @@ async function joinClassByCode(req, res) {
       }
 
       // Check for schedule overlapping with existing enrollments
-      const scheduleConflict = await checkUserScheduleConflict(studentUserId, classroomId, pool);
+      const scheduleConflict = await checkUserScheduleConflict(studentUserId, classroomId, pool, getClassroomSchedule(matchedClassroom.classroom));
       if (scheduleConflict.hasConflict) {
         await enrollmentClient.query('ROLLBACK');
         return res.status(409).json({

@@ -559,10 +559,25 @@ function UserManagementTab({ currentUser }) {
         targetType: enrollData.targetType,
         targetId: enrollData.targetId
       });
-      showMessage(
-        `Enrollment complete: ${response.summary.successCount} success, ${response.summary.failedCount} failed`,
-        response.summary.failedCount > 0 ? 'warning' : 'success'
-      );
+      const successCount = response.summary?.successCount || 0;
+      const failedCount = response.summary?.failedCount || 0;
+      const failedList = response.failed || [];
+
+      if (failedCount === 0) {
+        showMessage(`Successfully enrolled ${successCount} student(s).`);
+      } else {
+        const failedDetails = failedList
+          .map(f => {
+            const user = users.find(u => Number(u.user_id) === Number(f.userId));
+            return `${user?.full_name || `User ${f.userId}`} (${f.reason})`;
+          })
+          .join(', ');
+        
+        showMessage(
+          `Enrollment partial: ${successCount} success. FAILED for: ${failedDetails}.`,
+          'warning'
+        );
+      }
       setSelectedEnrollUserIds([]);
     } catch (error) {
       showMessage(error.response?.data?.error || 'Failed to enroll users', 'error');

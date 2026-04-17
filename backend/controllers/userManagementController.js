@@ -9,7 +9,7 @@ const {
   sendWelcomeEmail
 } = require('../services/emailService');
 const User = require('../models/User');
-const { checkUserScheduleConflict } = require('../utils/scheduleMatcher');
+const { checkUserScheduleConflict, getClassroomSchedule } = require('../utils/scheduleMatcher');
 
 const EXPORT_RATE_TRACKER = new Map();
 
@@ -751,6 +751,7 @@ async function enrollUsers(req, res) {
     const failed = [];
 
     let classroomGradeLevel = '';
+    let classroomSchedule = '';
     let classroomFound = false;
     if (normalizedTargetType === 'classroom') {
       const teacherStateRows = await pool.query(
@@ -770,6 +771,7 @@ async function enrollUsers(req, res) {
         if (matched) {
           classroomFound = true;
           classroomGradeLevel = String(matched.gradeLevel || '');
+          classroomSchedule = getClassroomSchedule(matched);
           break;
         }
       }
@@ -815,7 +817,7 @@ async function enrollUsers(req, res) {
       }
 
       if (normalizedTargetType === 'classroom') {
-        const scheduleConflict = await checkUserScheduleConflict(selectedUserId, parsedTargetId, pool);
+        const scheduleConflict = await checkUserScheduleConflict(selectedUserId, parsedTargetId, pool, classroomSchedule);
         if (scheduleConflict.hasConflict) {
           failed.push({
             userId: selectedUserId,

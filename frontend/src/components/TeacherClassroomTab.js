@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import axios from 'axios';
+
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
 import api, { classroomAPI } from '../services/api';
@@ -42,8 +44,20 @@ function getClassroomTheme(subject) {
   if (normalized.includes('physics')) {
     return { icon: 'fa-atom', tone: 'purple' };
   }
-  if (normalized.includes('chemistry') || normalized.includes('science')) {
+  if (normalized.includes('chemistry') || normalized.includes('science') || normalized.includes('sains')) {
     return { icon: 'fa-flask', tone: 'green' };
+  }
+  if (normalized.includes('biology') || normalized.includes('biologi')) {
+    return { icon: 'fa-microscope', tone: 'orange' };
+  }
+  if (normalized.includes('math')) {
+    return { icon: 'fa-calculator', tone: 'blue' };
+  }
+  if (normalized.includes('history') || normalized.includes('sejarah') || normalized.includes('geography') || normalized.includes('geografi')) {
+    return { icon: 'fa-landmark', tone: 'brown' };
+  }
+  if (normalized.includes('english') || normalized.includes('melayu') || normalized.includes('language')) {
+    return { icon: 'fa-language', tone: 'red' };
   }
   return { icon: 'fa-book', tone: 'blue' };
 }
@@ -158,14 +172,32 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
     endDate: classroom?.endDate || '',
     selfEnrollmentEnabled: Boolean(classroom?.selfEnrollmentEnabled),
     joinCode: classroom?.joinCode || '',
-    status: classroom?.status || 'Active'
+    status: classroom?.status || 'Active',
+    venueId: classroom?.venueId || ''
   });
+  const [venues, setVenues] = useState([]);
+  const [loadingVenues, setLoadingVenues] = useState(false);
   const [scheduleDays, setScheduleDays] = useState(initialSchedule.days);
   const [scheduleStartHour12, setScheduleStartHour12] = useState(initialStartTime12.hour12);
   const [scheduleStartMinute, setScheduleStartMinute] = useState(initialStartTime12.minute);
   const [scheduleStartMeridiem, setScheduleStartMeridiem] = useState(initialStartTime12.meridiem);
   const [scheduleDuration, setScheduleDuration] = useState(initialSchedule.duration);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchVenues = async () => {
+      try {
+        setLoadingVenues(true);
+        const response = await axios.get('/api/venues');
+        setVenues(response.data.venues || []);
+      } catch (err) {
+        console.error('Failed to fetch venues:', err);
+      } finally {
+        setLoadingVenues(false);
+      }
+    };
+    fetchVenues();
+  }, []);
 
   const convert12To24Time = (hour12Text, minuteText, meridiem) => {
     if (!hour12Text || !minuteText || !meridiem) {
@@ -361,11 +393,26 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
             ))}
           </select>
 
-          <label>Room Number</label>
+          <label>Venue Selection</label>
+          <select
+            value={form.venueId}
+            onChange={(event) => setField('venueId', event.target.value)}
+            disabled={isView}
+          >
+            <option value="">No Venue Assigned</option>
+            {venues.map(venue => (
+              <option key={venue.venue_id} value={venue.venue_id}>
+                {venue.name} (Cap: {venue.capacity || '-'})
+              </option>
+            ))}
+          </select>
+
+          <label>Room Number / Manual Location</label>
           <input
             value={form.roomNumber}
             onChange={(event) => setField('roomNumber', event.target.value)}
             disabled={isView}
+            placeholder="e.g. Room 101"
           />
 
           <label>Class Schedule</label>
@@ -1130,21 +1177,13 @@ function ManageStudentsModal({ classroomName, classroomGradeLevel, enrolledStude
     setLocalStudents((previous) => previous.filter((student) => student.studentId !== studentId));
   };
 
-  const addStudent = async (student) => {
+  const addStudent = (student) => {
     if (!isLevelAllowed(student)) {
       return;
     }
 
-    try {
-      const conflictCheck = await api.checkScheduleConflict(student.studentId, window.selectedClassroomId);
-      if (conflictCheck.hasConflict) {
-        Toast.error(`${student.name} already has a class at this time: ${conflictCheck.conflictingClassroomName}`);
-        return;
-      }
-    } catch (error) {
-      console.warn('Could not verify schedule overlap, proceeding anyway:', error);
-    }
-
+    // We remove the immediate individual check to allow the backend to report ALL conflicts
+    // when the 'Done' button is clicked.
     setLocalStudents((previous) => [...previous, student]);
   };
 

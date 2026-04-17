@@ -114,6 +114,26 @@
   background: #dcfce7;
 }
 
+.student-class-icon.purple {
+  color: #7c3aed;
+  background: #f5f3ff;
+}
+
+.student-class-icon.orange {
+  color: #ea580c;
+  background: #fff7ed;
+}
+
+.student-class-icon.brown {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.student-class-icon.red {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
 .student-class-card h3 {
   margin: 0.62rem 0 0;
   color: #111827;
