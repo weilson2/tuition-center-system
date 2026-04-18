@@ -1482,6 +1482,8 @@ async function updateFileContent(req, res) {
     );
     
     // Keep users.storage_used synced to PERSONAL scope only
+    if (sizeDifference !== 0) {
+      await syncUserPersonalStorageUsed(client, userId);
     }
     
     await client.query('COMMIT');
