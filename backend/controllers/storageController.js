@@ -453,12 +453,6 @@ async function uploadFile(req, res) {
     const currentUsed = await getPersonalStorageUsedBytes(client, userId);
     const fileSize = file.buffer.length;
 
-    console.log('📊 Storage Check:');
-    console.log('  Current used:', currentUsed);
-    console.log('  File size:', fileSize);
-    console.log('  Total after upload:', currentUsed + fileSize);
-    console.log('  Quota limit:', quotaLimit);
-    console.log('  Will exceed?', (currentUsed + fileSize) > quotaLimit);
 
     // Check if upload would exceed quota (only personal uploads count toward personal quota)
     if (uploadScope === 'personal' && quotaLimit !== null && currentUsed + fileSize > quotaLimit) {
@@ -722,8 +716,7 @@ async function getUserFiles(req, res) {
       ? 'edited'
       : 'uploaded';
     
-    console.log('📁 Get user files request:', { userId, folderId, search, fileType });
-    
+
     let query = `
       SELECT f.*, 
         ARRAY_AGG(DISTINCT ffa.folder_id) FILTER (WHERE ffa.folder_id IS NOT NULL) as folder_ids,
@@ -788,12 +781,7 @@ async function getUserFiles(req, res) {
     
     query += ` GROUP BY f.file_id ORDER BY f.uploaded_at DESC`;
     
-    console.log('📊 Query:', query);
-    console.log('📊 Params:', params);
-    
     const result = await pool.query(query, params);
-    
-    console.log(`✅ Found ${result.rows.length} files for user ${userId}`);
     
     res.json({ files: result.rows });
     
@@ -811,8 +799,7 @@ async function getSharedFiles(req, res) {
     const userId = req.user.userId;
     const { search, sharerRole, dateFrom, dateTo } = req.query;
     
-    console.log('📥 Get shared files request:', { userId, search, sharerRole, dateFrom, dateTo });
-    
+
     let query = `
       SELECT f.*, fs.shared_at, fs.sharing_id, fs.is_active as sharing_active,
         COALESCE(fs.can_download, true) AS can_download,
@@ -854,12 +841,7 @@ async function getSharedFiles(req, res) {
     
     query += ` ORDER BY fs.shared_at DESC`;
     
-    console.log('📊 Query:', query);
-    console.log('📊 Params:', params);
-    
     const result = await pool.query(query, params);
-    
-    console.log(`✅ Found ${result.rows.length} shared files for user ${userId}`);
     
     res.json({ files: result.rows });
     
@@ -1440,12 +1422,6 @@ async function updateFileContent(req, res) {
     const oldFileSize = parseInt(file.file_size);
     const sizeDifference = newFileSize - oldFileSize;
     
-    console.log('📝 File Edit:', {
-      filename: file.original_filename,
-      oldSize: oldFileSize,
-      newSize: newFileSize,
-      difference: sizeDifference
-    });
     
     // Check storage quota ONLY if file size increased
     if (sizeDifference > 0) {
@@ -1459,13 +1435,6 @@ async function updateFileContent(req, res) {
       const quotaLimit = getEffectiveQuotaBytes(user.role, user.storage_quota);
       const availableSpace = quotaLimit === null ? Number.POSITIVE_INFINITY : quotaLimit - currentUsed;
       
-      console.log('💾 Storage Check:', {
-        currentUsed,
-        quotaLimit,
-        availableSpace,
-        needsAdditional: sizeDifference,
-        willExceed: quotaLimit === null ? false : (currentUsed + sizeDifference) > quotaLimit
-      });
       
       // We only need to check if we have enough space for the ADDITIONAL bytes
       if (quotaLimit !== null && sizeDifference > availableSpace) {
@@ -1513,9 +1482,6 @@ async function updateFileContent(req, res) {
     );
     
     // Keep users.storage_used synced to PERSONAL scope only
-    if (sizeDifference !== 0) {
-      await syncUserPersonalStorageUsed(client, userId);
-      console.log(`✅ Updated storage usage by ${sizeDifference > 0 ? '+' : ''}${sizeDifference} bytes`);
     }
     
     await client.query('COMMIT');
@@ -1749,8 +1715,7 @@ async function shareFiles(req, res) {
     const shareBatchId = crypto.randomUUID();
     const sharePermissions = resolveSharePermissions(req.body?.permission || req.body?.sharePermission || 'all');
     
-    console.log('📤 Share request:', { fileIds, recipientIds, userId });
-    
+
     if (!fileIds || fileIds.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
     }
@@ -1882,8 +1847,7 @@ async function shareFiles(req, res) {
       console.error('Audit log error (non-critical):', auditError);
     }
     
-    console.log(`✅ Successfully shared ${fileIds.length} file(s) with ${recipientIds.length} recipient(s)`);
-    
+
     res.json({ 
       message: `Successfully shared ${fileIds.length} file(s) with ${normalizedRecipientIds.length} recipient(s)`,
       shareCount,

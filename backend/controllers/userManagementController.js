@@ -1429,7 +1429,7 @@ async function deleteUser(req, res) {
       return res.status(403).json({ error: 'Administrators cannot delete their own account' });
     }
 
-    console.log('🗑️ Attempting to delete user ID:', userId, 'by admin:', adminId);
+
 
     const userResult = await pool.query(
       'SELECT email, full_name, role FROM users WHERE user_id = $1',

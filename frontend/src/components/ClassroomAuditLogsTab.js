@@ -301,7 +301,7 @@ function ClassroomAuditLogsTab() {
           <h3>Classrooms (Archived Folder)</h3>
           <span>
             {loadingClassrooms
-              ? 'Loading classrooms...'
+              ? <><i className="fas fa-spinner fa-spin"></i> Loading classrooms...</>
               : `${classrooms.length} total • ${archivedClassrooms.length} archived`}
           </span>
         </div>
@@ -543,7 +543,7 @@ function ClassroomAuditLogsTab() {
 
         <div className="pagination classroom-pagination">
           <div className="pagination-info">
-            {loading ? 'Loading logs...' : `Showing ${startIndex} to ${endIndex} of ${pagination.total} results`}
+            {loading ? <><i className="fas fa-spinner fa-spin"></i> Loading logs...</> : `Showing ${startIndex} to ${endIndex} of ${pagination.total} results`}
           </div>
           <div className="pagination-controls">
             <button

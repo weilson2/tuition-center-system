@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import axios from 'axios';
 
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
@@ -41,24 +40,26 @@ const SCHEDULE_DURATION_OPTIONS = ['30', '45', '60', '75', '90', '120', '150', '
 
 function getClassroomTheme(subject) {
   const normalized = String(subject || '').toLowerCase();
-  if (normalized.includes('physics')) {
+  
+  if (normalized.includes('physics') || normalized.includes('fizik')) {
     return { icon: 'fa-atom', tone: 'purple' };
   }
-  if (normalized.includes('chemistry') || normalized.includes('science') || normalized.includes('sains')) {
+  if (normalized.includes('chemistry') || normalized.includes('science') || normalized.includes('sains') || normalized.includes('chem') || normalized.includes('sc ')) {
     return { icon: 'fa-flask', tone: 'green' };
   }
-  if (normalized.includes('biology') || normalized.includes('biologi')) {
+  if (normalized.includes('biology') || normalized.includes('biologi') || normalized.includes('bio')) {
     return { icon: 'fa-microscope', tone: 'orange' };
   }
   if (normalized.includes('math')) {
     return { icon: 'fa-calculator', tone: 'blue' };
   }
-  if (normalized.includes('history') || normalized.includes('sejarah') || normalized.includes('geography') || normalized.includes('geografi')) {
+  if (normalized.includes('history') || normalized.includes('sejarah') || normalized.includes('geography') || normalized.includes('geograf') || normalized.includes('geo')) {
     return { icon: 'fa-landmark', tone: 'brown' };
   }
-  if (normalized.includes('english') || normalized.includes('melayu') || normalized.includes('language')) {
+  if (normalized.includes('english') || normalized.includes('eng ') || normalized === 'eng' || normalized.includes('melayu') || normalized.includes('language') || normalized.includes('malay')) {
     return { icon: 'fa-language', tone: 'red' };
   }
+  
   return { icon: 'fa-book', tone: 'blue' };
 }
 
@@ -104,7 +105,7 @@ function normalizeCoTeacherList(list) {
   return normalized;
 }
 
-function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false }) {
+function ClassroomFormModal({ mode, classroom, onClose, onSave, venues, teacherUserId, isSaving = false }) {
   const isView = mode === 'view';
 
   const parseScheduleText = (scheduleText) => {
@@ -175,29 +176,15 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
     status: classroom?.status || 'Active',
     venueId: classroom?.venueId || ''
   });
-  const [venues, setVenues] = useState([]);
-  const [loadingVenues, setLoadingVenues] = useState(false);
+
   const [scheduleDays, setScheduleDays] = useState(initialSchedule.days);
   const [scheduleStartHour12, setScheduleStartHour12] = useState(initialStartTime12.hour12);
   const [scheduleStartMinute, setScheduleStartMinute] = useState(initialStartTime12.minute);
   const [scheduleStartMeridiem, setScheduleStartMeridiem] = useState(initialStartTime12.meridiem);
   const [scheduleDuration, setScheduleDuration] = useState(initialSchedule.duration);
+  const [availableVenueIds, setAvailableVenueIds] = useState(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    const fetchVenues = async () => {
-      try {
-        setLoadingVenues(true);
-        const response = await axios.get('/api/venues');
-        setVenues(response.data.venues || []);
-      } catch (err) {
-        console.error('Failed to fetch venues:', err);
-      } finally {
-        setLoadingVenues(false);
-      }
-    };
-    fetchVenues();
-  }, []);
 
   const convert12To24Time = (hour12Text, minuteText, meridiem) => {
     if (!hour12Text || !minuteText || !meridiem) {
@@ -259,11 +246,30 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
   useEffect(() => {
     if (scheduleDays.length === 0 || !scheduleStartTime || !scheduleDuration || !scheduleEndTime) {
       setField('classSchedule', '');
+      setAvailableVenueIds(null);
       return;
     }
 
-    setField('classSchedule', `${scheduleDays.join(', ')} ${scheduleStartTime}-${scheduleEndTime}`);
-  }, [scheduleDays, scheduleStartTime, scheduleDuration, scheduleEndTime]);
+    const newSchedule = `${scheduleDays.join(', ')} ${scheduleStartTime}-${scheduleEndTime}`;
+    setField('classSchedule', newSchedule);
+
+    // Fetch availability based on the new schedule
+    const fetchAvailability = async () => {
+      try {
+        setCheckingAvailability(true);
+        const cid = classroom?.classroomId || classroom?.id || '';
+        const response = await api.get(`/venues/availability?schedule=${encodeURIComponent(newSchedule)}&excludeClassroomId=${cid}&teacherUserId=${teacherUserId}`);
+        setAvailableVenueIds((response.data.venues || []).map(v => v.venue_id));
+      } catch (err) {
+        console.error('Failed to check venue availability:', err);
+      } finally {
+        setCheckingAvailability(false);
+      }
+    };
+    
+    // Debounce a bit if needed, but here we can just call it
+    fetchAvailability();
+  }, [scheduleDays, scheduleStartTime, scheduleDuration, scheduleEndTime, classroom]);
 
   const toggleScheduleDay = (day) => {
     setScheduleDays((previous) => (
@@ -393,27 +399,64 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
             ))}
           </select>
 
-          <label>Venue Selection</label>
+          <label>Venue Selection {checkingAvailability && <i className="fas fa-spinner fa-spin" style={{marginLeft: '5px', fontSize: '12px'}}></i>}</label>
           <select
             value={form.venueId}
-            onChange={(event) => setField('venueId', event.target.value)}
-            disabled={isView}
+            onChange={(event) => {
+              const vid = event.target.value;
+              setField('venueId', vid);
+              
+              if (vid) {
+                // Auto-populate roomNumber if a venue is selected
+                const selectedVenue = venues.find(v => String(v.venue_id) === String(vid));
+                if (selectedVenue) {
+                  setField('roomNumber', selectedVenue.name);
+                }
+              } else {
+                // When switching back to manual, clear the auto-populated name if it matches a venue
+                const isVenueName = venues.some(v => v.name === form.roomNumber);
+                if (isVenueName) {
+                  setField('roomNumber', '');
+                }
+              }
+            }}
+            disabled={isView || checkingAvailability}
+            style={{ borderColor: (form.venueId && availableVenueIds && !availableVenueIds.includes(Number(form.venueId))) ? '#ef4444' : '' }}
           >
-            <option value="">No Venue Assigned</option>
-            {venues.map(venue => (
-              <option key={venue.venue_id} value={venue.venue_id}>
-                {venue.name} (Cap: {venue.capacity || '-'})
-              </option>
-            ))}
+            <option value="">No Venue Assigned (Manual Mode)</option>
+            {venues.map(venue => {
+              const isAvailable = availableVenueIds === null || availableVenueIds.includes(Number(venue.venue_id));
+              const isSelected = String(form.venueId) === String(venue.venue_id);
+              
+              // Only show available venues, EXCEPT if it's the currently selected one (in case it's booked but we want to show it)
+              // Actually, we want to show the currently selected one even if it's "unavailable" to allow the user to see their choice.
+              if (!isAvailable && !isSelected) return null;
+
+              return (
+                <option key={venue.venue_id} value={venue.venue_id}>
+                  {venue.name} (Cap: {venue.capacity || '-'}){!isAvailable ? ' - OCCUPIED' : ''}
+                </option>
+              );
+            })}
           </select>
 
-          <label>Room Number / Manual Location</label>
-          <input
-            value={form.roomNumber}
-            onChange={(event) => setField('roomNumber', event.target.value)}
-            disabled={isView}
-            placeholder="e.g. Room 101"
-          />
+          {form.venueId && availableVenueIds && !availableVenueIds.includes(Number(form.venueId)) && (
+            <p style={{ color: '#ef4444', fontSize: '11px', gridColumn: '2', marginTop: '-5px' }}>
+              Priority Warning: This venue is occupied during the selected schedule!
+            </p>
+          )}
+
+          {!form.venueId && (
+            <>
+              <label>Room Number / Manual Location</label>
+              <input
+                value={form.roomNumber}
+                onChange={(event) => setField('roomNumber', event.target.value)}
+                disabled={isView}
+                placeholder="e.g. Room 101 or Online"
+              />
+            </>
+          )}
 
           <label>Class Schedule</label>
           <div className="teacher-schedule-builder">
@@ -1336,8 +1379,10 @@ function ManageTeachersModal({
         </div>
 
         <div className="teacher-manage-grid">
-          <div>
-            <h4>Assigned Teachers ({localTeachers.length})</h4>
+          <div className="teacher-manage-column enrolled-col">
+            <div className="teacher-manage-header">
+              <h4>Assigned Teachers ({localTeachers.length})</h4>
+            </div>
             <div className="teacher-manage-list">
               {localTeachers.map((teacher) => (
                 <div key={teacher.teacherUserId} className="teacher-manage-item enrolled">
@@ -1352,28 +1397,37 @@ function ManageTeachersModal({
                     <span>
                       <strong>{teacher.name}</strong>
                       <small>{teacher.email || `T${String(teacher.teacherUserId).padStart(3, '0')}`}</small>
+                      
+                      <select
+                        className="teacher-co-teacher-access"
+                        value={normalizeTeacherAccessRole(teacher.accessRole)}
+                        onChange={(event) => changeAccessRole(teacher.teacherUserId, event.target.value)}
+                      >
+                        <option value="student">Student Access</option>
+                        <option value="teacher">Assistant Teacher (Can Create Assignment)</option>
+                      </select>
                     </span>
                   </div>
 
                   <div className="teacher-manage-teacher-actions">
-                    <select
-                      className="teacher-co-teacher-access"
-                      value={normalizeTeacherAccessRole(teacher.accessRole)}
-                      onChange={(event) => changeAccessRole(teacher.teacherUserId, event.target.value)}
-                    >
-                      <option value="student">Student Access</option>
-                      <option value="teacher">Assistant Teacher (Can Create Assignment)</option>
-                    </select>
                     <button className="danger-link" onClick={() => removeTeacher(teacher.teacherUserId)}>Remove</button>
                   </div>
                 </div>
               ))}
-              {localTeachers.length === 0 && <p className="teacher-action-hint">No assistant teacher assigned</p>}
+              {localTeachers.length === 0 && (
+                <div className="teacher-manage-empty-placeholder">
+                  <i className="fas fa-user-plus"></i>
+                  <p>No assistant teacher assigned</p>
+                  <small>Add teachers from the list on the right to collaborate.</small>
+                </div>
+              )}
             </div>
           </div>
 
-          <div>
-            <h4>Available Teachers ({availableTeachers.length})</h4>
+          <div className="teacher-manage-column available-col">
+            <div className="teacher-manage-header">
+              <h4>Available Teachers ({availableTeachers.length})</h4>
+            </div>
             <div className="teacher-manage-list">
               {availableTeachers.map((teacher) => (
                 <div key={teacher.teacherUserId} className="teacher-manage-item available">
@@ -1393,7 +1447,12 @@ function ManageTeachersModal({
                   <button className="add-link" onClick={() => addTeacher(teacher)}>Add</button>
                 </div>
               ))}
-              {availableTeachers.length === 0 && <p className="teacher-action-hint">No available teachers</p>}
+              {availableTeachers.length === 0 && (
+                <div className="teacher-manage-empty-placeholder">
+                  <i className="fas fa-check-circle"></i>
+                  <p>No available teachers</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1915,6 +1974,19 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
   const [classroomDetailTab, setClassroomDetailTab] = useState('materials');
 
   const [classrooms, setClassrooms] = useState([]);
+  const [venues, setVenues] = useState([]);
+
+  useEffect(() => {
+    const fetchVenues = async () => {
+      try {
+        const response = await api.get('/venues');
+        setVenues(response.data.venues || []);
+      } catch (err) {
+        console.error('Failed to fetch venues:', err);
+      }
+    };
+    fetchVenues();
+  }, []);
 
   const [attendanceDate, setAttendanceDate] = useState(formatLocalDate(new Date()));
   const [attendanceClassroomId, setAttendanceClassroomId] = useState(null);
@@ -1950,7 +2022,8 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       ownerTeacherName: String(source.ownerTeacherName || currentTeacherProfile.displayName || 'Teacher'),
       coTeachers: normalizeCoTeacherList(source.coTeachers),
       assistantAccessRole: String(source.assistantAccessRole || 'owner').toLowerCase(),
-      isSharedClassroom: Boolean(source.isSharedClassroom)
+      isSharedClassroom: Boolean(source.isSharedClassroom),
+      venueId: source.venueId || source.venue_id || null
     };
   };
 
@@ -3807,6 +3880,15 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
                       {classroom.classSchedule || 'Schedule not set'}
                     </p>
 
+                    {(classroom.venueId || classroom.roomNumber) && (
+                      <p className="teacher-class-venue-line" style={{ fontSize: '0.85rem', color: '#666', marginTop: '4px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <i className="fas fa-location-dot" style={{ color: '#007bff', width: '14px', textAlign: 'center' }}></i>
+                        {classroom.venueId 
+                          ? (venues.find(v => Number(v.venue_id) === Number(classroom.venueId))?.name || 'Venue Assigned')
+                          : (classroom.roomNumber || 'Manual Location')}
+                      </p>
+                    )}
+
                     <div className="teacher-class-footer-row">
                       <span><i className="fas fa-users"></i> {enrolledCount} students</span>
                       <i className="fas fa-chevron-right teacher-class-arrow"></i>
@@ -4575,6 +4657,8 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
           classroom={modalState.classroom}
           onClose={closeModal}
           onSave={saveClassroom}
+          venues={venues}
+          teacherUserId={currentTeacherProfile.teacherUserId}
           isSaving={savingClassroom}
         />
       )}

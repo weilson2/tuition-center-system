@@ -88,6 +88,9 @@
   padding: 0.82rem 0.86rem 0.7rem;
   cursor: pointer;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
 }
 
 .student-class-card:hover {
@@ -154,8 +157,24 @@
   margin-top: 0.34rem;
 }
 
+.student-class-location {
+  font-size: 0.76rem !important;
+  color: #64748b !important;
+  margin-top: 0.38rem !important;
+  margin-bottom: 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.4rem !important;
+}
+
+.student-class-location i {
+  color: #3b82f6;
+  width: 14px;
+  text-align: center;
+}
+
 .student-class-card-footer {
-  margin-top: 0.8rem;
+  margin-top: auto;
   border-top: 1px solid #e5e7eb;
   padding-top: 0.58rem;
   display: flex;

@@ -2,7 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import api from '../services/api';
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
-import '../styles/UserManagement.css'; // Reusing some CSS or I will create a specific one
+import '../styles/UserManagement.css'; 
+import '../styles/VenueManagement.css';
 
 const venuesAPI = {
   getVenues: () => api.get('/venues'),
@@ -56,6 +57,7 @@ function VenueManagementTab() {
 
   useEffect(() => {
     fetchVenues();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const showMessage = (message, type = 'success') => {
@@ -173,72 +175,79 @@ function VenueManagementTab() {
       </div>
 
       {/* Availability Filter */}
-      <div className="um-filter-section" style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e9ecef' }}>
-        <h4 style={{ marginBottom: '10px' }}>Check Venue Availability</h4>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div>
-            <label style={{ fontSize: '12px', display: 'block' }}>Day</label>
+      <div className="venue-mgmt-filter">
+        <h4><i className="fas fa-search"></i> Check Venue Availability</h4>
+        <div className="filter-controls">
+          <div className="filter-group">
+            <label>Day</label>
             <select 
+              className="filter-select"
               value={availabilityFilter.day} 
               onChange={e => setAvailabilityFilter({...availabilityFilter, day: e.target.value})}
-              style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
             >
               {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
-          <div>
-            <label style={{ fontSize: '12px', display: 'block' }}>Start Time</label>
-            <div style={{ display: 'flex', gap: '5px' }}>
+          
+          <div className="filter-group">
+            <label>Start Time</label>
+            <div className="time-inputs">
               <select 
+                className="filter-select"
                 value={availabilityFilter.startHour} 
                 onChange={e => setAvailabilityFilter({...availabilityFilter, startHour: e.target.value})}
-                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
               >
                 {['08', '09', '10', '11', '12', '01', '02', '03', '04', '05', '06', '07', '08'].map(h => <option key={h} value={h}>{h}</option>)}
               </select>
               <select 
+                className="filter-select"
                 value={availabilityFilter.startMin} 
                 onChange={e => setAvailabilityFilter({...availabilityFilter, startMin: e.target.value})}
-                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
               >
                 {['00', '15', '30', '45'].map(m => <option key={m} value={m}>{m}</option>)}
               </select>
               <select 
+                className="filter-select"
                 value={availabilityFilter.meridiem} 
                 onChange={e => setAvailabilityFilter({...availabilityFilter, meridiem: e.target.value})}
-                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
               >
                 <option value="AM">AM</option>
                 <option value="PM">PM</option>
               </select>
             </div>
           </div>
-          <div>
-            <label style={{ fontSize: '12px', display: 'block' }}>Duration (min)</label>
+
+          <div className="filter-group">
+            <label>Duration (min)</label>
             <select 
+              className="filter-select"
               value={availabilityFilter.duration} 
               onChange={e => setAvailabilityFilter({...availabilityFilter, duration: e.target.value})}
-              style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
             >
               {['30', '45', '60', '90', '120', '180'].map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
-          <button 
-            className="um-btn-secondary" 
-            onClick={checkAvailability} 
-            disabled={checkingAvailability}
-            style={{ padding: '8px 15px' }}
-          >
-            {checkingAvailability ? 'Checking...' : 'Filter Available'}
-          </button>
-          {availableVenues !== null && (
+
+          <div className="filter-group">
             <button 
-              className="um-btn-secondary" 
-              onClick={() => setAvailableVenues(null)}
-              style={{ padding: '8px 15px', background: 'none', border: 'none', color: '#dc3545', textDecoration: 'underline', cursor: 'pointer' }}
+              className="um-btn-primary" 
+              onClick={checkAvailability} 
+              disabled={checkingAvailability}
             >
-              Clear Filter
+              {checkingAvailability ? <><i className="fas fa-spinner fa-spin"></i> Checking...</> : 'Filter Available'}
             </button>
+          </div>
+
+          {availableVenues !== null && (
+            <div className="filter-group">
+              <button 
+                className="clear-btn" 
+                onClick={() => setAvailableVenues(null)}
+                title="Clear Filter"
+              >
+                <i className="fas fa-times-circle"></i> Clear
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -267,15 +276,15 @@ function VenueManagementTab() {
                 filteredVenues.map(venue => (
                   <tr key={venue.venue_id}>
                     <td>
-                      <div className="um-user-info">
-                        <strong>{venue.name}</strong>
-                        <span className="um-user-email">{venue.description || 'No description'}</span>
+                      <div className="venue-table-info">
+                        <span className="venue-name">{venue.name}</span>
+                        <span className="venue-desc">{venue.description || 'No description'}</span>
                       </div>
                     </td>
-                    <td>{venue.capacity || '-'}</td>
-                    <td>{venue.location || '-'}</td>
+                    <td className="capacity-col">{venue.capacity || '-'}</td>
+                    <td className="location-col">{venue.location || '-'}</td>
                     <td>
-                      <div className="um-actions">
+                      <div className="venue-actions">
                         <button className="um-action-btn" onClick={() => handleViewTimetable(venue)} title="View Timetable">
                           <i className="fas fa-calendar-alt"></i>
                         </button>

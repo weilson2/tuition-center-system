@@ -129,19 +129,28 @@ async function getVenueTimetable(req, res) {
 
 async function getAvailableVenues(req, res) {
   try {
-    const { schedule } = req.query; // e.g. "Mon 08:00-09:00"
+    const { schedule, excludeClassroomId, teacherUserId } = req.query; // e.g. "Mon 08:00-09:00", excludeClassroomId=123
     if (!schedule) {
       return res.status(400).json({ error: 'Schedule is required for availability check' });
     }
 
     const { hasOverlap } = require('../utils/scheduleMatcher');
     const venuesResult = await pool.query('SELECT * FROM venues');
-    const teacherStateResult = await pool.query('SELECT state_json FROM teacher_classroom_states');
+    const teacherStateResult = await pool.query('SELECT state_json, teacher_user_id FROM teacher_classroom_states');
     
     const occupiedVenueIds = new Set();
     for (const row of teacherStateResult.rows || []) {
       const clsList = Array.isArray(row?.state_json?.classrooms) ? row.state_json.classrooms : [];
       for (const cls of clsList) {
+        // Skip current classroom if excluding (robust check for self-conflict during edits)
+        const clsId = String(cls.classroomId || cls.id || '');
+        const targetId = String(excludeClassroomId || '');
+        const isSameTeacher = teacherUserId ? String(row.teacher_user_id) === String(teacherUserId) : true;
+        
+        if (targetId && clsId === targetId && isSameTeacher) {
+          continue;
+        }
+
         if (cls.venueId && cls.classSchedule) {
           if (hasOverlap(schedule, cls.classSchedule)) {
             occupiedVenueIds.add(Number(cls.venueId));

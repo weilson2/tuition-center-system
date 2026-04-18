@@ -1084,7 +1084,11 @@ function UserManagementTab({ currentUser }) {
           </div>
 
           <div className="um-pagination modern">
-            <span>Showing 1 to {userRows.length} of {pagination.total} users</span>
+            <span>
+              {loadingUsers 
+                ? <><i className="fas fa-spinner fa-spin"></i> Loading users...</> 
+                : `Showing 1 to ${userRows.length} of ${pagination.total} users`}
+            </span>
             <div className="um-page-controls">
               <button
                 className="um-btn-secondary"
@@ -1121,7 +1125,7 @@ function UserManagementTab({ currentUser }) {
               onChange={(event) => setEnrollData((prev) => ({ ...prev, targetId: event.target.value }))}
               disabled={loadingClassrooms}
             >
-              <option value="">{loadingClassrooms ? 'Loading classrooms...' : 'Select Classroom'}</option>
+              <option value="">{loadingClassrooms ? '↻ Loading classrooms...' : 'Select Classroom'}</option>
               {allClassrooms.map((cls) => (
                 <option key={cls.classroomId} value={cls.classroomId}>
                   [{cls.classroomId}] {cls.classroomName} ({cls.ownerTeacherName})
@@ -1227,7 +1231,7 @@ function UserManagementTab({ currentUser }) {
             <h3>Role & Permission (RBAC)</h3>
             <p>Configure module access for each role.</p>
           </div>
-          {rbacLoading && <p>Loading permissions...</p>}
+          {rbacLoading && <div className="um-loading"><i className="fas fa-spinner fa-spin"></i> Loading permissions...</div>}
           {!rbacLoading && (
             <div className="um-rbac-grid">
               {rbacData.roles.map((role) => {
