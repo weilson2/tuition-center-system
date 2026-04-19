@@ -4,6 +4,7 @@ import { authAPI } from '../services/api';
 import { storage } from '../utils/storage';
 import AuditLogsTab from './AuditLogsTab';
 import UserManagementTab from './UserManagementTab';
+import VenueManagementTab from './VenueManagementTab';
 import ClassroomAuditLogsTab from './ClassroomAuditLogsTab';
 import ConfirmDialog from './ConfirmDialog';
 import '../styles/AdminDashboard.css';
@@ -144,6 +145,14 @@ function AdminDashboard() {
             <i className="fas fa-users"></i>
             <span>User Management</span>
           </button>
+          <button
+            type="button"
+            className={`admin-nav-item ${activeTab === 'venues' ? 'active' : ''}`}
+            onClick={() => setActiveTab('venues')}
+          >
+            <i className="fas fa-building"></i>
+            <span>Venue Management</span>
+          </button>
         </nav>
       </aside>
 
@@ -155,6 +164,7 @@ function AdminDashboard() {
             {activeTab === 'storage' && 'Storage System Audit Logs'}
             {activeTab === 'classroom' && 'Classroom Activity Logs'}
             {activeTab === 'users' && 'User Management'}
+            {activeTab === 'venues' && 'Venue Management'}
           </h1>
           <div className="admin-user-info">
             <span>{user.fullName}</span>
@@ -176,6 +186,10 @@ function AdminDashboard() {
           
           {activeTab === 'users' && (
             <UserManagementTab currentUser={user} />
+          )}
+
+          {activeTab === 'venues' && (
+            <VenueManagementTab />
           )}
         </div>
 

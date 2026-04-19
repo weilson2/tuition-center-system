@@ -70,10 +70,7 @@ function App() {
       const rememberMe = storage.isRememberMe();
 
       if (token && user) {
-        console.log('✅ Found existing session');
-        console.log('Remember Me:', rememberMe);
-      } else {
-        console.log('❌ No session found');
+        // session exists
       }
 
       setIsCheckingAuth(false);

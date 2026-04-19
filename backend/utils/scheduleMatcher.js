@@ -31,6 +31,16 @@ function parseTimePart(timeStr) {
 }
 
 /**
+ * Returns the schedule string from a classroom object, checking multiple field names.
+ * @param {object} cls 
+ * @returns {string}
+ */
+function getClassroomSchedule(cls) {
+  if (!cls) return '';
+  return String(cls.classSchedule || cls.schedule || '').trim();
+}
+
+/**
  * Parses a schedule string into a structured format for overlap logic.
  * Example input: "Mon, Tue 08:15-09:30"
  * @param {string} scheduleStr 
@@ -38,32 +48,33 @@ function parseTimePart(timeStr) {
  */
 function parseSchedule(scheduleStr) {
   const result = [];
-  if (!scheduleStr || typeof scheduleStr !== 'string') return result;
+  const normalized = String(scheduleStr || '').trim();
+  if (!normalized || normalized === '-') return result;
 
-  // Split multiple schedules if separated by semicolons or something else
-  // For now, looking at the UI, the standard format is "Mon, Tue 08:15-09:30"
-  
-  // 1) Extract time range from end of string
-  const timeMatch = scheduleStr.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/);
-  if (!timeMatch) return result;
+  // Supports: "Mon 08:00-09:00", "Mon, Tue 08:00-09:30", "Mon 10:00-11:00; Wed 10:00-11:00"
+  const segments = normalized.split(/;|\n/).filter(Boolean);
 
-  const startMin = parseTimePart(timeMatch[1]);
-  const endMin = parseTimePart(timeMatch[2]);
-  
-  if (startMin === null || endMin === null) return result;
+  for (const segment of segments) {
+    const timeMatch = segment.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+    if (!timeMatch) continue;
 
-  // 2) Extract days (everything before the time part)
-  const daysText = scheduleStr.replace(timeMatch[0], '').trim();
-  const daysTokens = daysText.split(/[,\s]+/).filter(Boolean);
+    const startMin = parseTimePart(timeMatch[1]);
+    const endMin = parseTimePart(timeMatch[2]);
+    
+    if (startMin === null || endMin === null) continue;
 
-  for (const token of daysTokens) {
-    const lowerToken = token.toLowerCase();
-    if (DAY_MAP[lowerToken] !== undefined) {
-      result.push({
-        day: DAY_MAP[lowerToken],
-        startMin,
-        endMin
-      });
+    const daysText = segment.replace(timeMatch[0], '').trim();
+    const daysTokens = daysText.split(/[,\s]+/).filter(Boolean);
+
+    for (const token of daysTokens) {
+      const lowerToken = token.toLowerCase();
+      if (DAY_MAP[lowerToken] !== undefined) {
+        result.push({
+          day: DAY_MAP[lowerToken],
+          startMin,
+          endMin
+        });
+      }
     }
   }
 
@@ -72,15 +83,17 @@ function parseSchedule(scheduleStr) {
 
 /**
  * Returns true if schedule A overlaps with schedule B.
- * @param {string} scheduleA "Mon 08:00-09:00"
- * @param {string} scheduleB "Mon, Tue 08:30-09:30"
+ * @param {string} scheduleA
+ * @param {string} scheduleB
  * @returns {boolean}
  */
 function hasOverlap(scheduleA, scheduleB) {
-  if (!scheduleA || !scheduleB) return false;
+  const normalizedA = String(scheduleA || '').trim();
+  const normalizedB = String(scheduleB || '').trim();
+  if (!normalizedA || normalizedA === '-' || !normalizedB || normalizedB === '-') return false;
 
-  const parsedA = parseSchedule(scheduleA);
-  const parsedB = parseSchedule(scheduleB);
+  const parsedA = parseSchedule(normalizedA);
+  const parsedB = parseSchedule(normalizedB);
 
   for (const blockA of parsedA) {
     for (const blockB of parsedB) {
@@ -101,17 +114,16 @@ function hasOverlap(scheduleA, scheduleB) {
  * @param {number} userId 
  * @param {number} targetClassroomId 
  * @param {Pool} pool Database pool to use for queries
+ * @param {string} [targetSchedule] Optional: Use this schedule instead of fetching from DB (useful for pending updates)
  * @returns {Promise<{ hasConflict: boolean, conflictingClassroomName?: string }>}
  */
-async function checkUserScheduleConflict(userId, targetClassroomId, pool) {
+async function checkUserScheduleConflict(userId, targetClassroomId, pool, targetSchedule = null) {
   try {
-    // 1) Get the schedule of the classroom they are trying to join
     const teacherStateResult = await pool.query('SELECT state_json FROM teacher_classroom_states');
     
     let targetClassroom = null;
-    const allExistingClassroomsMap = new Map(); // Keep track of all classrooms
+    const allExistingClassroomsMap = new Map();
 
-    // Parse all states to find the target and collect classrooms
     for (const row of teacherStateResult.rows || []) {
       const clsList = Array.isArray(row?.state_json?.classrooms) ? row.state_json.classrooms : [];
       for (const cls of clsList) {
@@ -125,12 +137,11 @@ async function checkUserScheduleConflict(userId, targetClassroomId, pool) {
       }
     }
 
-    if (!targetClassroom || !targetClassroom.classSchedule) {
-      // If the target class doesn't exist or doesn't have a schedule, no conflict is possible
+    const effectiveTargetSchedule = targetSchedule || getClassroomSchedule(targetClassroom);
+    if (!effectiveTargetSchedule) {
       return { hasConflict: false };
     }
 
-    // 2) Get the user's currently enrolled active classes
     const enrollmentResult = await pool.query(
       `SELECT target_id 
        FROM user_enrollments 
@@ -142,16 +153,16 @@ async function checkUserScheduleConflict(userId, targetClassroomId, pool) {
 
     const enrolledIds = enrollmentResult.rows.map(r => Number(r.target_id));
 
-    // 3) Check for overlaps against all enrolled classes
     for (const enrolledId of enrolledIds) {
-      if (enrolledId === Number(targetClassroomId)) continue; // Joining the same class again (handled elsewhere)
+      if (enrolledId === Number(targetClassroomId)) continue;
       
       const enrolledClass = allExistingClassroomsMap.get(enrolledId);
-      if (enrolledClass && enrolledClass.classSchedule) {
-        if (hasOverlap(targetClassroom.classSchedule, enrolledClass.classSchedule)) {
+      const enrolledSched = getClassroomSchedule(enrolledClass);
+      if (enrolledSched) {
+        if (hasOverlap(effectiveTargetSchedule, enrolledSched)) {
           return {
             hasConflict: true,
-            conflictingClassroomName: enrolledClass.classroomName || 'Another Class'
+            conflictingClassroomName: enrolledClass.classroomName || enrolledClass.title || 'Another Class'
           };
         }
       }
@@ -160,7 +171,92 @@ async function checkUserScheduleConflict(userId, targetClassroomId, pool) {
     return { hasConflict: false };
   } catch (error) {
     console.error('Error in checkUserScheduleConflict:', error);
-    // On error, default to allowing it to avoid completely locking users out of system
+    return { hasConflict: false };
+  }
+}
+
+/**
+ * Checks if a proposed classroom schedule conflicts with any of the teacher's existing classes (owner or co-teacher).
+ * @param {number} teacherUserId 
+ * @param {string} proposedSchedule The schedule they are trying to set ("Mon 08:15-10:00")
+ * @param {number} currentClassroomId Optional: ID of class being updated (to ignore current class)
+ * @param {Pool} pool Database pool to use for queries
+ * @returns {Promise<{ hasConflict: boolean, conflictingClassroomName?: string }>}
+ */
+async function checkTeacherScheduleConflict(teacherUserId, proposedSchedule, currentClassroomId, pool) {
+  try {
+    if (!proposedSchedule || proposedSchedule === '-') return { hasConflict: false };
+
+    const teacherStateResult = await pool.query('SELECT state_json, teacher_user_id FROM teacher_classroom_states');
+    
+    for (const row of teacherStateResult.rows || []) {
+      const ownerTeacherId = Number(row.teacher_user_id);
+      const clsList = Array.isArray(row?.state_json?.classrooms) ? row.state_json.classrooms : [];
+      
+      for (const cls of clsList) {
+        const id = Number(cls.classroomId || cls.id);
+        if (currentClassroomId && id === Number(currentClassroomId)) continue;
+        
+        const isOwner = ownerTeacherId === Number(teacherUserId);
+        const coTeachers = Array.isArray(cls.coTeachers) ? cls.coTeachers : [];
+        const isCoTeacher = coTeachers.some(t => Number(t.teacherUserId || t.userId || t.id) === Number(teacherUserId));
+
+        if (isOwner || isCoTeacher) {
+          const classSched = getClassroomSchedule(cls);
+          if (classSched && hasOverlap(proposedSchedule, classSched)) {
+            return {
+              hasConflict: true,
+              conflictingClassroomName: cls.classroomName || cls.title || 'Another Class'
+            };
+          }
+        }
+      }
+    }
+
+    return { hasConflict: false };
+  } catch (error) {
+    console.error('Error in checkTeacherScheduleConflict:', error);
+    return { hasConflict: false };
+  }
+}
+
+/**
+ * Checks if a proposed classroom schedule conflicts with any other class assigned to the same venue.
+ * @param {number} venueId 
+ * @param {string} proposedSchedule 
+ * @param {number} currentClassroomId Optional: ID of class being updated
+ * @param {Pool} pool 
+ * @returns {Promise<{ hasConflict: boolean, conflictingClassroomName?: string }>}
+ */
+async function checkVenueScheduleConflict(venueId, proposedSchedule, currentClassroomId, pool) {
+  try {
+    if (!venueId || !proposedSchedule || proposedSchedule === '-') return { hasConflict: false };
+
+    const teacherStateResult = await pool.query('SELECT state_json FROM teacher_classroom_states');
+    
+    for (const row of teacherStateResult.rows || []) {
+      const clsList = Array.isArray(row?.state_json?.classrooms) ? row.state_json.classrooms : [];
+      
+      for (const cls of clsList) {
+        const id = Number(cls.classroomId || cls.id);
+        if (currentClassroomId && id === Number(currentClassroomId)) continue;
+        
+        // Check if this class is assigned to the target venue
+        if (Number(cls.venueId) === Number(venueId)) {
+          const classSched = getClassroomSchedule(cls);
+          if (classSched && hasOverlap(proposedSchedule, classSched)) {
+            return {
+              hasConflict: true,
+              conflictingClassroomName: cls.classroomName || cls.title || 'Another Class'
+            };
+          }
+        }
+      }
+    }
+
+    return { hasConflict: false };
+  } catch (error) {
+    console.error('Error in checkVenueScheduleConflict:', error);
     return { hasConflict: false };
   }
 }
@@ -168,5 +264,9 @@ async function checkUserScheduleConflict(userId, targetClassroomId, pool) {
 module.exports = {
   parseSchedule,
   hasOverlap,
-  checkUserScheduleConflict
+  checkUserScheduleConflict,
+  checkTeacherScheduleConflict,
+  checkVenueScheduleConflict,
+  getClassroomSchedule
 };
+

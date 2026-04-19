@@ -133,6 +133,22 @@
   color: #6b7280;
 }
 
+.um-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.um-loading i {
+  color: #3b82f6;
+  font-size: 1.25rem;
+}
+
 .um-pagination {
   display: flex;
   justify-content: space-between;
@@ -691,4 +707,15 @@
 .um-export-select-head span {
   color: #6b7280;
   font-size: 0.8rem;
+}
+.um-user-avatar {
+  background: #cbd5e0;
+  overflow: hidden;
+}
+
+.um-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }

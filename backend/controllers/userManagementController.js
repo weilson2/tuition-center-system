@@ -9,7 +9,7 @@ const {
   sendWelcomeEmail
 } = require('../services/emailService');
 const User = require('../models/User');
-const { checkUserScheduleConflict } = require('../utils/scheduleMatcher');
+const { checkUserScheduleConflict, getClassroomSchedule } = require('../utils/scheduleMatcher');
 
 const EXPORT_RATE_TRACKER = new Map();
 
@@ -255,12 +255,25 @@ async function listUsers(req, res) {
     let paramCount = 0;
 
     if (search) {
+      const trimmedSearch = search.trim();
       paramCount += 1;
-      whereClauses.push(`(u.full_name ILIKE $${paramCount} OR u.email ILIKE $${paramCount})`);
-      params.push(`%${search.trim()}%`);
+      const searchParam = `%${trimmedSearch}%`;
+      
+      // Check for numeric ID or prefixed ID like S123, T456
+      const idMatch = trimmedSearch.match(/^[A-Za-z]?(\d+)$/);
+      
+      if (idMatch) {
+        const idValue = parseInt(idMatch[1], 10);
+        whereClauses.push(`(u.full_name ILIKE $${paramCount} OR u.email ILIKE $${paramCount} OR u.user_id = $${paramCount + 1})`);
+        params.push(searchParam, idValue);
+        paramCount += 1;
+      } else {
+        whereClauses.push(`(u.full_name ILIKE $${paramCount} OR u.email ILIKE $${paramCount})`);
+        params.push(searchParam);
+      }
     }
 
-    if (role) {
+    if (role && role !== 'all') {
       const normalizedRole = normalizeRole(role);
       if (ALLOWED_ROLES.includes(normalizedRole)) {
         paramCount += 1;
@@ -269,7 +282,13 @@ async function listUsers(req, res) {
       }
     }
 
-    if (status) {
+    if (req.query.level && req.query.level !== '' && req.query.level !== 'all') {
+      paramCount += 1;
+      whereClauses.push(`u.student_level = $${paramCount}`);
+      params.push(req.query.level);
+    }
+
+    if (status && status !== 'all') {
       const normalizedStatus = normalizeStatus(status);
       if (ALLOWED_STATUS.includes(normalizedStatus)) {
         paramCount += 1;
@@ -297,6 +316,7 @@ async function listUsers(req, res) {
         u.account_status,
         u.is_active,
         u.phone_number,
+        u.profile_picture_url,
         GREATEST(COALESCE(fs.storage_used, 0), COALESCE(u.storage_used, 0)) AS storage_used,
         CASE
           WHEN u.role = 'teacher' THEN ${STORAGE_QUOTA_BY_ROLE.teacher}
@@ -731,6 +751,7 @@ async function enrollUsers(req, res) {
     const failed = [];
 
     let classroomGradeLevel = '';
+    let classroomSchedule = '';
     let classroomFound = false;
     if (normalizedTargetType === 'classroom') {
       const teacherStateRows = await pool.query(
@@ -750,6 +771,7 @@ async function enrollUsers(req, res) {
         if (matched) {
           classroomFound = true;
           classroomGradeLevel = String(matched.gradeLevel || '');
+          classroomSchedule = getClassroomSchedule(matched);
           break;
         }
       }
@@ -795,7 +817,7 @@ async function enrollUsers(req, res) {
       }
 
       if (normalizedTargetType === 'classroom') {
-        const scheduleConflict = await checkUserScheduleConflict(selectedUserId, parsedTargetId, pool);
+        const scheduleConflict = await checkUserScheduleConflict(selectedUserId, parsedTargetId, pool, classroomSchedule);
         if (scheduleConflict.hasConflict) {
           failed.push({
             userId: selectedUserId,
@@ -1393,11 +1415,64 @@ async function exportUsers(req, res) {
   }
 }
 
+async function deleteUser(req, res) {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    const adminId = req.user.userId;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    if (adminId === userId) {
+      return res.status(403).json({ error: 'Administrators cannot delete their own account' });
+    }
+
+
+
+    const userResult = await pool.query(
+      'SELECT email, full_name, role FROM users WHERE user_id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const deletedUser = userResult.rows[0];
+
+    // Delete user (cascade should handle dependencies if set up, or add manual cleanup)
+    await pool.query('DELETE FROM users WHERE user_id = $1', [userId]);
+
+    await logAudit({
+      userId: adminId,
+      sessionId: req.sessionId,
+      operationType: 'admin_user_delete',
+      ipAddress,
+      operationDetails: JSON.stringify({
+        deletedUserId: userId,
+        deletedEmail: deletedUser.email,
+        deletedName: deletedUser.full_name,
+        deletedRole: deletedUser.role
+      }),
+      status: 'success',
+      userAgent: req.headers['user-agent']
+    });
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user. Ensure there are no dependent records.' });
+  }
+}
+
 module.exports = {
   listUsers,
   getUserStats,
   addUser,
   editUser,
+  deleteUser,
   resetUserPassword,
   enrollUsers,
   getRolePermissions,

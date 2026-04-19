@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
 import api, { classroomAPI } from '../services/api';
@@ -39,12 +40,26 @@ const SCHEDULE_DURATION_OPTIONS = ['30', '45', '60', '75', '90', '120', '150', '
 
 function getClassroomTheme(subject) {
   const normalized = String(subject || '').toLowerCase();
-  if (normalized.includes('physics')) {
+  
+  if (normalized.includes('physics') || normalized.includes('fizik')) {
     return { icon: 'fa-atom', tone: 'purple' };
   }
-  if (normalized.includes('chemistry') || normalized.includes('science')) {
+  if (normalized.includes('chemistry') || normalized.includes('science') || normalized.includes('sains') || normalized.includes('chem') || normalized.includes('sc ')) {
     return { icon: 'fa-flask', tone: 'green' };
   }
+  if (normalized.includes('biology') || normalized.includes('biologi') || normalized.includes('bio')) {
+    return { icon: 'fa-microscope', tone: 'orange' };
+  }
+  if (normalized.includes('math')) {
+    return { icon: 'fa-calculator', tone: 'blue' };
+  }
+  if (normalized.includes('history') || normalized.includes('sejarah') || normalized.includes('geography') || normalized.includes('geograf') || normalized.includes('geo')) {
+    return { icon: 'fa-landmark', tone: 'brown' };
+  }
+  if (normalized.includes('english') || normalized.includes('eng ') || normalized === 'eng' || normalized.includes('melayu') || normalized.includes('language') || normalized.includes('malay')) {
+    return { icon: 'fa-language', tone: 'red' };
+  }
+  
   return { icon: 'fa-book', tone: 'blue' };
 }
 
@@ -90,7 +105,7 @@ function normalizeCoTeacherList(list) {
   return normalized;
 }
 
-function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false }) {
+function ClassroomFormModal({ mode, classroom, onClose, onSave, venues, teacherUserId, isSaving = false }) {
   const isView = mode === 'view';
 
   const parseScheduleText = (scheduleText) => {
@@ -158,13 +173,17 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
     endDate: classroom?.endDate || '',
     selfEnrollmentEnabled: Boolean(classroom?.selfEnrollmentEnabled),
     joinCode: classroom?.joinCode || '',
-    status: classroom?.status || 'Active'
+    status: classroom?.status || 'Active',
+    venueId: classroom?.venueId || ''
   });
+
   const [scheduleDays, setScheduleDays] = useState(initialSchedule.days);
   const [scheduleStartHour12, setScheduleStartHour12] = useState(initialStartTime12.hour12);
   const [scheduleStartMinute, setScheduleStartMinute] = useState(initialStartTime12.minute);
   const [scheduleStartMeridiem, setScheduleStartMeridiem] = useState(initialStartTime12.meridiem);
   const [scheduleDuration, setScheduleDuration] = useState(initialSchedule.duration);
+  const [availableVenueIds, setAvailableVenueIds] = useState(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [error, setError] = useState('');
 
   const convert12To24Time = (hour12Text, minuteText, meridiem) => {
@@ -227,11 +246,30 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
   useEffect(() => {
     if (scheduleDays.length === 0 || !scheduleStartTime || !scheduleDuration || !scheduleEndTime) {
       setField('classSchedule', '');
+      setAvailableVenueIds(null);
       return;
     }
 
-    setField('classSchedule', `${scheduleDays.join(', ')} ${scheduleStartTime}-${scheduleEndTime}`);
-  }, [scheduleDays, scheduleStartTime, scheduleDuration, scheduleEndTime]);
+    const newSchedule = `${scheduleDays.join(', ')} ${scheduleStartTime}-${scheduleEndTime}`;
+    setField('classSchedule', newSchedule);
+
+    // Fetch availability based on the new schedule
+    const fetchAvailability = async () => {
+      try {
+        setCheckingAvailability(true);
+        const cid = classroom?.classroomId || classroom?.id || '';
+        const response = await api.get(`/venues/availability?schedule=${encodeURIComponent(newSchedule)}&excludeClassroomId=${cid}&teacherUserId=${teacherUserId}`);
+        setAvailableVenueIds((response.data.venues || []).map(v => v.venue_id));
+      } catch (err) {
+        console.error('Failed to check venue availability:', err);
+      } finally {
+        setCheckingAvailability(false);
+      }
+    };
+    
+    // Debounce a bit if needed, but here we can just call it
+    fetchAvailability();
+  }, [scheduleDays, scheduleStartTime, scheduleDuration, scheduleEndTime, classroom]);
 
   const toggleScheduleDay = (day) => {
     setScheduleDays((previous) => (
@@ -361,12 +399,64 @@ function ClassroomFormModal({ mode, classroom, onClose, onSave, isSaving = false
             ))}
           </select>
 
-          <label>Room Number</label>
-          <input
-            value={form.roomNumber}
-            onChange={(event) => setField('roomNumber', event.target.value)}
-            disabled={isView}
-          />
+          <label>Venue Selection {checkingAvailability && <i className="fas fa-spinner fa-spin" style={{marginLeft: '5px', fontSize: '12px'}}></i>}</label>
+          <select
+            value={form.venueId}
+            onChange={(event) => {
+              const vid = event.target.value;
+              setField('venueId', vid);
+              
+              if (vid) {
+                // Auto-populate roomNumber if a venue is selected
+                const selectedVenue = venues.find(v => String(v.venue_id) === String(vid));
+                if (selectedVenue) {
+                  setField('roomNumber', selectedVenue.name);
+                }
+              } else {
+                // When switching back to manual, clear the auto-populated name if it matches a venue
+                const isVenueName = venues.some(v => v.name === form.roomNumber);
+                if (isVenueName) {
+                  setField('roomNumber', '');
+                }
+              }
+            }}
+            disabled={isView || checkingAvailability}
+            style={{ borderColor: (form.venueId && availableVenueIds && !availableVenueIds.includes(Number(form.venueId))) ? '#ef4444' : '' }}
+          >
+            <option value="">No Venue Assigned (Manual Mode)</option>
+            {venues.map(venue => {
+              const isAvailable = availableVenueIds === null || availableVenueIds.includes(Number(venue.venue_id));
+              const isSelected = String(form.venueId) === String(venue.venue_id);
+              
+              // Only show available venues, EXCEPT if it's the currently selected one (in case it's booked but we want to show it)
+              // Actually, we want to show the currently selected one even if it's "unavailable" to allow the user to see their choice.
+              if (!isAvailable && !isSelected) return null;
+
+              return (
+                <option key={venue.venue_id} value={venue.venue_id}>
+                  {venue.name} (Cap: {venue.capacity || '-'}){!isAvailable ? ' - OCCUPIED' : ''}
+                </option>
+              );
+            })}
+          </select>
+
+          {form.venueId && availableVenueIds && !availableVenueIds.includes(Number(form.venueId)) && (
+            <p style={{ color: '#ef4444', fontSize: '11px', gridColumn: '2', marginTop: '-5px' }}>
+              Priority Warning: This venue is occupied during the selected schedule!
+            </p>
+          )}
+
+          {!form.venueId && (
+            <>
+              <label>Room Number / Manual Location</label>
+              <input
+                value={form.roomNumber}
+                onChange={(event) => setField('roomNumber', event.target.value)}
+                disabled={isView}
+                placeholder="e.g. Room 101 or Online"
+              />
+            </>
+          )}
 
           <label>Class Schedule</label>
           <div className="teacher-schedule-builder">
@@ -1091,6 +1181,7 @@ function AssignmentSubmissionsModal({ assignment, rows, onClose, onOpenReview, o
 
 function ManageStudentsModal({ classroomName, classroomGradeLevel, enrolledStudents, allStudents, onClose, onSave }) {
   const [localStudents, setLocalStudents] = useState(enrolledStudents);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const normalizeLevel = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const hasSpecificClassLevel = Boolean(normalizeLevel(classroomGradeLevel));
@@ -1103,27 +1194,39 @@ function ManageStudentsModal({ classroomName, classroomGradeLevel, enrolledStude
   };
 
   const enrolledIds = new Set(localStudents.map((student) => student.studentId));
-  const availableStudents = allStudents.filter((student) => !enrolledIds.has(student.studentId) && isLevelAllowed(student));
+
+  const filteredEnrolled = localStudents.filter((student) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      String(student?.name || '').toLowerCase().includes(query) ||
+      String(student?.studentNo || '').toLowerCase().includes(query)
+    );
+  });
+
+  const availableStudents = allStudents.filter((student) => {
+    if (enrolledIds.has(student.studentId)) return false;
+    if (!isLevelAllowed(student)) return false;
+
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      String(student?.name || '').toLowerCase().includes(query) ||
+      String(student?.studentNo || '').toLowerCase().includes(query)
+    );
+  });
 
   const removeStudent = (studentId) => {
     setLocalStudents((previous) => previous.filter((student) => student.studentId !== studentId));
   };
 
-  const addStudent = async (student) => {
+  const addStudent = (student) => {
     if (!isLevelAllowed(student)) {
       return;
     }
 
-    try {
-      const conflictCheck = await api.checkScheduleConflict(student.studentId, window.selectedClassroomId);
-      if (conflictCheck.hasConflict) {
-        Toast.error(`${student.name} already has a class at this time: ${conflictCheck.conflictingClassroomName}`);
-        return;
-      }
-    } catch (error) {
-      console.warn('Could not verify schedule overlap, proceeding anyway:', error);
-    }
-
+    // We remove the immediate individual check to allow the backend to report ALL conflicts
+    // when the 'Done' button is clicked.
     setLocalStudents((previous) => [...previous, student]);
   };
 
@@ -1137,44 +1240,84 @@ function ManageStudentsModal({ classroomName, classroomGradeLevel, enrolledStude
           </button>
         </div>
 
-        <div className="teacher-manage-grid">
-          <div>
-            <h4>Enrolled Students ({localStudents.length})</h4>
-            <div className="teacher-manage-list">
-              {localStudents.map((student) => (
-                <div key={student.studentId} className="teacher-manage-item enrolled">
-                  <div className="teacher-manage-student-meta">
-                    <div className="teacher-manage-avatar">{student.name.charAt(0).toUpperCase()}</div>
-                    <span>
-                      <strong>{student.name}</strong>
-                      <small>{student.studentNo}</small>
-                    </span>
-                  </div>
-                  <button className="danger-link" onClick={() => removeStudent(student.studentId)}>Remove</button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <h4>Available Students ({availableStudents.length})</h4>
-            {hasSpecificClassLevel && !isAllLevelClassroom && (
-              <p className="teacher-action-hint">Only {classroomGradeLevel} students can be added.</p>
+        <div className="teacher-manage-search-wrap">
+          <div className="teacher-manage-search-box">
+            <i className="fas fa-search"></i>
+            <input
+              type="text"
+              placeholder="Search students by name or student number..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+            {searchQuery && (
+              <button type="button" className="teacher-search-clear" onClick={() => setSearchQuery('')}>
+                <i className="fas fa-times-circle"></i>
+              </button>
             )}
-            <div className="teacher-manage-list">
-              {availableStudents.map((student) => (
-                <div key={student.studentId} className="teacher-manage-item available">
-                  <div className="teacher-manage-student-meta">
-                    <div className="teacher-manage-avatar muted">{student.name.charAt(0).toUpperCase()}</div>
-                    <span>
-                      <strong>{student.name}</strong>
-                      <small>{student.studentNo}</small>
-                    </span>
+          </div>
+        </div>
+
+        <div className="teacher-manage-body">
+          <div className="teacher-manage-grid">
+            <div className="teacher-manage-column enrolled-col">
+              <div className="teacher-manage-header">
+                <h4>Enrolled Students ({filteredEnrolled.length})</h4>
+              </div>
+              <div className="teacher-manage-list">
+                {filteredEnrolled.map((student) => (
+                  <div key={student.studentId} className="teacher-manage-item enrolled">
+                    <div className="teacher-manage-student-meta">
+                      <div className="teacher-manage-avatar">
+                        {student.profilePictureUrl ? (
+                          <img src={student.profilePictureUrl} alt={student.name} />
+                        ) : (
+                          student.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <span>
+                        <strong>{student.name}</strong>
+                        <small>{student.studentNo}</small>
+                      </span>
+                    </div>
+                    <button className="danger-link" onClick={() => removeStudent(student.studentId)}>Remove</button>
                   </div>
-                  <button className="add-link" onClick={() => addStudent(student)}>Add</button>
-                </div>
-              ))}
-              {availableStudents.length === 0 && <p className="teacher-action-hint">No available students</p>}
+                ))}
+                {filteredEnrolled.length === 0 && (
+                  <p className="teacher-action-hint">{searchQuery ? 'No matching students found' : 'No students enrolled'}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="teacher-manage-column available-col">
+              <div className="teacher-manage-header">
+                <h4>Available Students ({availableStudents.length})</h4>
+                {hasSpecificClassLevel && !isAllLevelClassroom && (
+                  <span className="teacher-grade-badge">{classroomGradeLevel} Only</span>
+                )}
+              </div>
+              <div className="teacher-manage-list">
+                {availableStudents.map((student) => (
+                  <div key={student.studentId} className="teacher-manage-item available">
+                    <div className="teacher-manage-student-meta">
+                      <div className="teacher-manage-avatar muted">
+                        {student.profilePictureUrl ? (
+                          <img src={student.profilePictureUrl} alt={student.name} />
+                        ) : (
+                          student.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <span>
+                        <strong>{student.name}</strong>
+                        <small>{student.studentNo}</small>
+                      </span>
+                    </div>
+                    <button className="add-link" onClick={() => addStudent(student)}>Add</button>
+                  </div>
+                ))}
+                {availableStudents.length === 0 && (
+                  <p className="teacher-action-hint">{searchQuery ? 'No matching students found' : 'No available students'}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1236,43 +1379,66 @@ function ManageTeachersModal({
         </div>
 
         <div className="teacher-manage-grid">
-          <div>
-            <h4>Assigned Teachers ({localTeachers.length})</h4>
+          <div className="teacher-manage-column enrolled-col">
+            <div className="teacher-manage-header">
+              <h4>Assigned Teachers ({localTeachers.length})</h4>
+            </div>
             <div className="teacher-manage-list">
               {localTeachers.map((teacher) => (
                 <div key={teacher.teacherUserId} className="teacher-manage-item enrolled">
                   <div className="teacher-manage-student-meta">
-                    <div className="teacher-manage-avatar">{String(teacher.name || 'T').charAt(0).toUpperCase()}</div>
+                    <div className="teacher-manage-avatar">
+                      {teacher.profilePictureUrl ? (
+                        <img src={teacher.profilePictureUrl} alt={teacher.name} />
+                      ) : (
+                        String(teacher.name || 'T').charAt(0).toUpperCase()
+                      )}
+                    </div>
                     <span>
                       <strong>{teacher.name}</strong>
                       <small>{teacher.email || `T${String(teacher.teacherUserId).padStart(3, '0')}`}</small>
+                      
+                      <select
+                        className="teacher-co-teacher-access"
+                        value={normalizeTeacherAccessRole(teacher.accessRole)}
+                        onChange={(event) => changeAccessRole(teacher.teacherUserId, event.target.value)}
+                      >
+                        <option value="student">Student Access</option>
+                        <option value="teacher">Assistant Teacher (Can Create Assignment)</option>
+                      </select>
                     </span>
                   </div>
 
                   <div className="teacher-manage-teacher-actions">
-                    <select
-                      className="teacher-co-teacher-access"
-                      value={normalizeTeacherAccessRole(teacher.accessRole)}
-                      onChange={(event) => changeAccessRole(teacher.teacherUserId, event.target.value)}
-                    >
-                      <option value="student">Student Access</option>
-                      <option value="teacher">Assistant Teacher (Can Create Assignment)</option>
-                    </select>
                     <button className="danger-link" onClick={() => removeTeacher(teacher.teacherUserId)}>Remove</button>
                   </div>
                 </div>
               ))}
-              {localTeachers.length === 0 && <p className="teacher-action-hint">No assistant teacher assigned</p>}
+              {localTeachers.length === 0 && (
+                <div className="teacher-manage-empty-placeholder">
+                  <i className="fas fa-user-plus"></i>
+                  <p>No assistant teacher assigned</p>
+                  <small>Add teachers from the list on the right to collaborate.</small>
+                </div>
+              )}
             </div>
           </div>
 
-          <div>
-            <h4>Available Teachers ({availableTeachers.length})</h4>
+          <div className="teacher-manage-column available-col">
+            <div className="teacher-manage-header">
+              <h4>Available Teachers ({availableTeachers.length})</h4>
+            </div>
             <div className="teacher-manage-list">
               {availableTeachers.map((teacher) => (
                 <div key={teacher.teacherUserId} className="teacher-manage-item available">
                   <div className="teacher-manage-student-meta">
-                    <div className="teacher-manage-avatar muted">{String(teacher.name || 'T').charAt(0).toUpperCase()}</div>
+                    <div className="teacher-manage-avatar muted">
+                      {teacher.profilePictureUrl ? (
+                        <img src={teacher.profilePictureUrl} alt={teacher.name} />
+                      ) : (
+                        String(teacher.name || 'T').charAt(0).toUpperCase()
+                      )}
+                    </div>
                     <span>
                       <strong>{teacher.name}</strong>
                       <small>{teacher.email}</small>
@@ -1281,7 +1447,12 @@ function ManageTeachersModal({
                   <button className="add-link" onClick={() => addTeacher(teacher)}>Add</button>
                 </div>
               ))}
-              {availableTeachers.length === 0 && <p className="teacher-action-hint">No available teachers</p>}
+              {availableTeachers.length === 0 && (
+                <div className="teacher-manage-empty-placeholder">
+                  <i className="fas fa-check-circle"></i>
+                  <p>No available teachers</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1400,13 +1571,7 @@ function TakeAttendanceModal({ classroomName, students, initialDate, onClose, on
   }, [students]);
 
   const [date, setDate] = useState(initialDate || formatLocalDate(new Date()));
-  const displayStudentNoById = useMemo(() => {
-    const next = {};
-    sortedStudents.forEach((student, index) => {
-      next[student.studentId] = `S${String(index + 1).padStart(3, '0')}`;
-    });
-    return next;
-  }, [sortedStudents]);
+
 
   const [statusMap, setStatusMap] = useState(() => {
     const seed = {};
@@ -1469,10 +1634,16 @@ function TakeAttendanceModal({ classroomName, students, initialDate, onClose, on
                 onClick={() => toggleStudent(student.studentId)}
               >
                 <div className="student-main">
-                  <div className="student-avatar">{student.name.charAt(0).toUpperCase()}</div>
-                  <div>
+                  <div className="student-avatar">
+                    {student.profilePictureUrl ? (
+                      <img src={student.profilePictureUrl} alt={student.name} />
+                    ) : (
+                      student.name.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="student-info">
                     <strong>{student.name}</strong>
-                      <p>{displayStudentNoById[student.studentId] || student.studentNo}</p>
+                      <p>{student.studentNo}</p>
                   </div>
                 </div>
                 <span className={`teacher-toggle-dot ${statusMap[student.studentId] ? 'on' : ''}`}></span>
@@ -1512,13 +1683,7 @@ function AttendanceRecordModal({ classroomName, dateKey, students, initialStatus
     });
   }, [students]);
 
-  const displayStudentNoById = useMemo(() => {
-    const next = {};
-    sortedStudents.forEach((student, index) => {
-      next[student.studentId] = `S${String(index + 1).padStart(3, '0')}`;
-    });
-    return next;
-  }, [sortedStudents]);
+
 
   const [statusMap, setStatusMap] = useState(() => ({ ...initialStatusMap }));
 
@@ -1575,10 +1740,16 @@ function AttendanceRecordModal({ classroomName, dateKey, students, initialStatus
                   onClick={() => toggleStudent(student.studentId)}
                 >
                   <div className="student-main">
-                    <div className="student-avatar">{student.name.charAt(0).toUpperCase()}</div>
-                    <div>
+                    <div className="student-avatar">
+                      {student.profilePictureUrl ? (
+                        <img src={student.profilePictureUrl} alt={student.name} />
+                      ) : (
+                        student.name.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div className="student-info">
                       <strong>{student.name}</strong>
-                      <p>{displayStudentNoById[student.studentId] || student.studentNo}</p>
+                      <p>{student.studentNo}</p>
                     </div>
                   </div>
                   <span className={`teacher-record-status-pill ${isPresent ? 'present' : 'absent'}`}>
@@ -1609,8 +1780,14 @@ function StudentAttendanceModal({ classroomName, student, historyRows, onClose }
       <div className="teacher-action-modal teacher-student-attendance-modal">
         <div className="teacher-action-modal-header">
           <div className="teacher-student-modal-header-main">
-            <div className="student-avatar">{student.name.charAt(0).toUpperCase()}</div>
-            <div>
+            <div className="student-avatar">
+              {student.profilePictureUrl ? (
+                <img src={student.profilePictureUrl} alt={student.name} />
+              ) : (
+                student.name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div className="student-info">
               <h3>{student.name}</h3>
               <p>{student.studentNo} · {classroomName}</p>
             </div>
@@ -1797,6 +1974,19 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
   const [classroomDetailTab, setClassroomDetailTab] = useState('materials');
 
   const [classrooms, setClassrooms] = useState([]);
+  const [venues, setVenues] = useState([]);
+
+  useEffect(() => {
+    const fetchVenues = async () => {
+      try {
+        const response = await api.get('/venues');
+        setVenues(response.data.venues || []);
+      } catch (err) {
+        console.error('Failed to fetch venues:', err);
+      }
+    };
+    fetchVenues();
+  }, []);
 
   const [attendanceDate, setAttendanceDate] = useState(formatLocalDate(new Date()));
   const [attendanceClassroomId, setAttendanceClassroomId] = useState(null);
@@ -1832,7 +2022,8 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       ownerTeacherName: String(source.ownerTeacherName || currentTeacherProfile.displayName || 'Teacher'),
       coTeachers: normalizeCoTeacherList(source.coTeachers),
       assistantAccessRole: String(source.assistantAccessRole || 'owner').toLowerCase(),
-      isSharedClassroom: Boolean(source.isSharedClassroom)
+      isSharedClassroom: Boolean(source.isSharedClassroom),
+      venueId: source.venueId || source.venue_id || null
     };
   };
 
@@ -2411,6 +2602,7 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
           studentNo: `S${String(item.user_id).padStart(3, '0')}`,
           email: item.email,
           studentLevel: item.student_level || '',
+          profilePictureUrl: item.profile_picture_url || null,
           status: 'Active'
         }));
 
@@ -2419,7 +2611,8 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
         .map((item) => ({
           teacherUserId: Number(item.user_id),
           name: String(item.full_name || `Teacher ${item.user_id}`),
-          email: String(item.email || '')
+          email: String(item.email || ''),
+          profilePictureUrl: item.profile_picture_url || null
         }))
         .filter((item) => Number.isInteger(item.teacherUserId) && item.teacherUserId > 0);
 
@@ -3347,10 +3540,10 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
       // Auto-share material to students storage is disabled as requested by user.
 
       closeActionModal();
-      showMessage('Material uploaded successfully (saved to Cloudflare R2)');
+      showMessage('Material uploaded successfully');
     } catch (error) {
       console.error('Failed to upload material to cloud storage:', error);
-      showMessage(error.response?.data?.error || 'Failed to upload material to Cloudflare R2', 'error');
+      showMessage(error.response?.data?.error || 'Failed to upload material', 'error');
     } finally {
       setUploadingMaterial(false);
     }
@@ -3687,6 +3880,15 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
                       {classroom.classSchedule || 'Schedule not set'}
                     </p>
 
+                    {(classroom.venueId || classroom.roomNumber) && (
+                      <p className="teacher-class-venue-line" style={{ fontSize: '0.85rem', color: '#666', marginTop: '4px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <i className="fas fa-location-dot" style={{ color: '#007bff', width: '14px', textAlign: 'center' }}></i>
+                        {classroom.venueId 
+                          ? (venues.find(v => Number(v.venue_id) === Number(classroom.venueId))?.name || 'Venue Assigned')
+                          : (classroom.roomNumber || 'Manual Location')}
+                      </p>
+                    )}
+
                     <div className="teacher-class-footer-row">
                       <span><i className="fas fa-users"></i> {enrolledCount} students</span>
                       <i className="fas fa-chevron-right teacher-class-arrow"></i>
@@ -3958,7 +4160,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
               <div className="teacher-student-list-detail">
                 {selectedClassStudents.map((student) => (
                   <div key={student.studentId} className="teacher-student-item-detail">
-                    <div className="teacher-student-avatar">{student.name.charAt(0)}</div>
+                    <div className="teacher-student-avatar">
+                      {student.profilePictureUrl ? (
+                        <img src={student.profilePictureUrl} alt={student.name} />
+                      ) : (
+                        student.name.charAt(0)
+                      )}
+                    </div>
                     <div>
                       <strong>{student.name}</strong>
                       <p>{student.studentNo} · {student.email}</p>
@@ -3983,7 +4191,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
               <div className="teacher-student-list-detail">
                 <div className="teacher-student-item-detail">
-                  <div className="teacher-student-avatar">{String(selectedClassroom?.ownerTeacherName || 'T').charAt(0).toUpperCase()}</div>
+                  <div className="teacher-student-avatar">
+                    {selectedClassroom?.ownerProfilePictureUrl ? (
+                      <img src={selectedClassroom.ownerProfilePictureUrl} alt={selectedClassroom.ownerTeacherName} />
+                    ) : (
+                      String(selectedClassroom?.ownerTeacherName || 'T').charAt(0).toUpperCase()
+                    )}
+                  </div>
                   <div>
                     <strong>{selectedClassroom?.ownerTeacherName || 'Owner Teacher'}</strong>
                     <p>Owner · Higher Priority</p>
@@ -3992,7 +4206,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
                 {selectedClassCoTeachers.map((teacher) => (
                   <div key={teacher.teacherUserId} className="teacher-student-item-detail">
-                    <div className="teacher-student-avatar">{String(teacher.name || 'T').charAt(0).toUpperCase()}</div>
+                    <div className="teacher-student-avatar">
+                      {teacher.profilePictureUrl ? (
+                        <img src={teacher.profilePictureUrl} alt={teacher.name} />
+                      ) : (
+                        String(teacher.name || 'T').charAt(0).toUpperCase()
+                      )}
+                    </div>
                     <div>
                       <strong>{teacher.name}</strong>
                       <p>{normalizeTeacherAccessRole(teacher.accessRole) === 'teacher' ? 'Assistant Teacher (Can Create Assignment)' : 'Assistant Teacher (View Only)'}</p>
@@ -4197,7 +4417,13 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
               {attendanceStudentRows.map((student) => (
                 <div key={student.studentId} className="teacher-student-attendance-row">
                   <div className="student-main">
-                    <div className="student-avatar">{student.name.charAt(0)}</div>
+                    <div className="student-avatar">
+                      {student.profilePictureUrl ? (
+                        <img src={student.profilePictureUrl} alt={student.name} />
+                      ) : (
+                        student.name.charAt(0)
+                      )}
+                    </div>
                     <div>
                       <strong>{student.name}</strong>
                       <p>{student.studentNo}</p>
@@ -4373,8 +4599,14 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
                           <td><input type="checkbox" /></td>
                           <td>
                             <div className="teacher-grading-student-cell">
-                              <div className="teacher-grading-student-avatar">{row.studentName.charAt(0)}</div>
-                              <div>
+                              <div className="teacher-grading-student-avatar">
+                                {row.studentProfilePictureUrl ? (
+                                  <img src={row.studentProfilePictureUrl} alt={row.studentName} />
+                                ) : (
+                                  row.studentName.charAt(0)
+                                )}
+                              </div>
+                              <div className="student-info">
                                 <strong>{row.studentName}</strong>
                                 <p>{row.studentNo}</p>
                               </div>
@@ -4425,6 +4657,8 @@ function TeacherClassroomTab({ navigationIntent = null, onNavigationIntentConsum
           classroom={modalState.classroom}
           onClose={closeModal}
           onSave={saveClassroom}
+          venues={venues}
+          teacherUserId={currentTeacherProfile.teacherUserId}
           isSaving={savingClassroom}
         />
       )}

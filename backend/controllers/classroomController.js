@@ -1,5 +1,5 @@
 const pool = require('../config/database');
-const { checkUserScheduleConflict } = require('../utils/scheduleMatcher');
+const { checkUserScheduleConflict, checkTeacherScheduleConflict, checkVenueScheduleConflict, hasOverlap, getClassroomSchedule } = require('../utils/scheduleMatcher');
 
 let ensuredTables = false;
 
@@ -423,6 +423,7 @@ function normalizeClassroomCoTeachers(list) {
       teacherUserId,
       name: String(entry?.name || `Teacher ${teacherUserId}`),
       email: String(entry?.email || ''),
+      profilePictureUrl: entry?.profilePictureUrl || null,
       accessRole: normalizeTeacherAccessRole(entry?.accessRole)
     });
   });
@@ -497,6 +498,7 @@ async function getTeacherState(req, res) {
         ...classroom,
         ownerTeacherId: Number.isInteger(ownerTeacherId) && ownerTeacherId > 0 ? ownerTeacherId : teacherUserId,
         ownerTeacherName: String(classroom?.ownerTeacherName || req.user.fullName || 'Teacher'),
+        ownerProfilePictureUrl: classroom?.ownerProfilePictureUrl || (Number(ownerTeacherId) === Number(teacherUserId) ? (req.user.profilePictureUrl || null) : null),
         status: normalizeClassroomStatus(classroom?.status),
         coTeachers: normalizeClassroomCoTeachers(classroom?.coTeachers),
         assistantAccessRole: 'owner',
@@ -547,7 +549,8 @@ async function getTeacherState(req, res) {
         tcs.teacher_user_id,
         tcs.state_json,
         u.full_name AS owner_name,
-        u.teacher_title AS owner_teacher_title
+        u.teacher_title AS owner_teacher_title,
+        u.profile_picture_url AS owner_profile_picture_url
        FROM teacher_classroom_states tcs
        JOIN users u ON u.user_id = tcs.teacher_user_id
        WHERE tcs.teacher_user_id <> $1
@@ -631,7 +634,11 @@ async function getTeacherState(req, res) {
             || formatAnnouncementAuthorName(sharedRow.owner_name, sharedRow.owner_teacher_title)
             || `Teacher ${ownerTeacherId}`
           ),
-          coTeachers,
+          ownerProfilePictureUrl: sharedRow.owner_profile_picture_url || null,
+          coTeachers: coTeachers.map(ct => ({
+            ...ct,
+            profilePictureUrl: ct.profilePictureUrl || null // Will be enriched later or already present
+          })),
           assistantAccessRole: normalizeTeacherAccessRole(currentTeacherAccess.accessRole),
           isSharedClassroom: true,
           _ownerExplicit: true
@@ -745,13 +752,13 @@ async function getTeacherState(req, res) {
              ue.target_id AS classroom_id,
              u.user_id,
              u.full_name,
-             u.email
+             u.email,
+             u.profile_picture_url
            FROM user_enrollments ue
            JOIN users u ON u.user_id = ue.user_id
            WHERE ue.target_type = 'classroom'
              AND ue.enrollment_status = 'active'
-             AND ue.target_id = ANY($1::int[])
-             AND u.role = 'student'`,
+            AND ue.target_id = ANY($1::int[])`,
           [ownedClassroomIds]
         );
 
@@ -779,11 +786,12 @@ async function getTeacherState(req, res) {
             name: String(entry.full_name || `Student ${studentUserId}`),
             studentNo: `S${String(studentUserId).padStart(3, '0')}`,
             email: String(entry.email || ''),
+            profilePictureUrl: entry.profile_picture_url || null,
             status: 'Active'
           });
         });
 
-        ownedClassroomIds.forEach((classroomId) => {
+        for (const classroomId of ownedClassroomIds) {
           const rosterKey = String(classroomId);
           const existingRoster = syncedStudentsByClassroom[rosterKey]
             || syncedStudentsByClassroom[classroomId]
@@ -817,7 +825,31 @@ async function getTeacherState(req, res) {
           });
 
           syncedStudentsByClassroom[rosterKey] = Array.from(mergedByStudent.values());
-        });
+
+          // --- Lazy Enrollment Sync ---
+          // If the JSON roster has students but the enrollment join brought back 0 records for this specific classroom,
+          // it means the classroom was likely affected by a previous sync blocker. We repair it now.
+          const jsonRosterIds = (Array.isArray(existingRoster) ? existingRoster : [])
+            .map(s => Number(s?.studentId || s?.userId || s?.id))
+            .filter(id => Number.isInteger(id) && id > 0);
+          
+          if (jsonRosterIds.length > 0 && (!enrolledByClassroom.has(classroomId) || enrolledByClassroom.get(classroomId).length === 0)) {
+            for (const studentId of jsonRosterIds) {
+              try {
+                await pool.query(
+                  `INSERT INTO user_enrollments (user_id, target_type, target_id, enrollment_status, enrolled_at, enrolled_by)
+                   VALUES ($1, 'classroom', $2, 'active', CURRENT_TIMESTAMP, $3)
+                   ON CONFLICT (user_id, target_type, target_id) DO UPDATE 
+                   SET enrollment_status = 'active', enrolled_at = CURRENT_TIMESTAMP`,
+                  [studentId, classroomId, teacherUserId]
+                );
+              } catch (err) {
+                console.error(`LazySync failed for student ${studentId}:`, err.message);
+              }
+            }
+            shouldPersistCurrentTeacherState = true;
+          }
+        }
 
         const previousSerializedRoster = JSON.stringify(state.studentsByClassroom || {});
         const nextSerializedRoster = JSON.stringify(syncedStudentsByClassroom);
@@ -872,7 +904,8 @@ async function getTeacherState(req, res) {
           s.feedback,
           s.submitted_at,
           COALESCE(primary_file.file_type, matched_file.file_type) AS file_type,
-          u.full_name AS student_name
+          u.full_name AS student_name,
+          u.profile_picture_url AS student_profile_picture_url
          FROM classroom_assignment_submissions s
          JOIN users u ON u.user_id = s.student_user_id
          LEFT JOIN files primary_file ON primary_file.file_id = s.file_id
@@ -964,7 +997,8 @@ async function getTeacherState(req, res) {
           gradedByUserId: Number(existingRow?.gradedByUserId || 0) || null,
           gradedByName: String(existingRow?.gradedByName || ''),
           gradedAt: existingRow?.gradedAt || null,
-          assignmentTitle: assignmentMeta.assignmentTitle
+          assignmentTitle: assignmentMeta.assignmentTitle,
+          studentProfilePictureUrl: submission.student_profile_picture_url || null
         };
 
         const withoutCurrent = existingRows.filter((row) => Number(row?.id) !== Number(submission.submission_id));
@@ -984,6 +1018,80 @@ async function getTeacherState(req, res) {
       });
 
       state.gradingSubmissionsByAssignment = nextGradingSubmissionsByAssignment;
+    }
+
+    // --- Global Profile Picture Enrichment ---
+    const allUserIdsToEnrich = new Set();
+    state.classrooms.forEach(classroom => {
+      if (classroom.ownerTeacherId) allUserIdsToEnrich.add(Number(classroom.ownerTeacherId));
+      if (Array.isArray(classroom.coTeachers)) {
+        classroom.coTeachers.forEach(ct => {
+          if (ct.teacherUserId) allUserIdsToEnrich.add(Number(ct.teacherUserId));
+        });
+      }
+    });
+
+    Object.values(state.studentsByClassroom || {}).forEach(roster => {
+      if (Array.isArray(roster)) {
+        roster.forEach(student => {
+          const sid = Number(student.studentId || student.userId || student.id);
+          if (sid > 0) allUserIdsToEnrich.add(sid);
+        });
+      }
+    });
+
+    if (allUserIdsToEnrich.size > 0) {
+      try {
+        const profileRows = await pool.query(
+          'SELECT user_id, profile_picture_url FROM users WHERE user_id = ANY($1::int[])',
+          [Array.from(allUserIdsToEnrich)]
+        );
+        
+        const profileMap = new Map();
+        profileRows.rows.forEach(row => {
+          profileMap.set(Number(row.user_id), row.profile_picture_url);
+        });
+
+        // Apply enrichment to classrooms
+        state.classrooms.forEach(classroom => {
+          if (classroom.ownerTeacherId && profileMap.has(Number(classroom.ownerTeacherId))) {
+            classroom.ownerProfilePictureUrl = profileMap.get(Number(classroom.ownerTeacherId)) || classroom.ownerProfilePictureUrl;
+          }
+          if (Array.isArray(classroom.coTeachers)) {
+            classroom.coTeachers.forEach(ct => {
+              if (ct.teacherUserId && profileMap.has(Number(ct.teacherUserId))) {
+                ct.profilePictureUrl = profileMap.get(Number(ct.teacherUserId)) || ct.profilePictureUrl || null;
+              }
+            });
+          }
+        });
+
+        // Apply enrichment to rosters
+        Object.entries(state.studentsByClassroom || {}).forEach(([classId, roster]) => {
+          if (Array.isArray(roster)) {
+            roster.forEach(student => {
+              const sid = Number(student.studentId || student.userId || student.id);
+              if (sid > 0 && profileMap.has(sid)) {
+                student.profilePictureUrl = profileMap.get(sid) || student.profilePictureUrl || null;
+              }
+            });
+          }
+        });
+
+        // Apply enrichment to grading submissions
+        Object.values(state.gradingSubmissionsByAssignment || {}).forEach(submissions => {
+          if (Array.isArray(submissions)) {
+            submissions.forEach(sub => {
+              const sid = Number(sub.studentUserId || sub.userId || sub.studentId);
+              if (sid > 0 && profileMap.has(sid)) {
+                sub.studentProfilePictureUrl = profileMap.get(sid) || sub.studentProfilePictureUrl || null;
+              }
+            });
+          }
+        });
+      } catch (enrichError) {
+        console.warn('Failed to enrich profile pictures:', enrichError.message);
+      }
     }
 
     return res.json({ state, updatedAt: row.updated_at });
@@ -1104,6 +1212,70 @@ async function saveTeacherState(req, res) {
       archivedClassrooms: Array.isArray(existingState.archivedClassrooms) ? existingState.archivedClassrooms : []
     };
 
+    // --- Optimized Comprehensive Schedule Conflict Validation ---
+    const validationTasks = [];
+
+    for (let i = 0; i < normalizedFinalOwnedClassrooms.length; i++) {
+      const cls = normalizedFinalOwnedClassrooms[i];
+      if (!cls.classSchedule || cls.classSchedule === '-' || normalizeClassroomStatus(cls.status) === 'Archived') continue;
+
+      const currentClassroomId = Number(cls.classroomId || cls.id);
+
+      // 1. Internal owner overlap check: against other classes in the same teacher state (Synchronous)
+      for (let j = i + 1; j < normalizedFinalOwnedClassrooms.length; j++) {
+        const otherCls = normalizedFinalOwnedClassrooms[j];
+        if (!otherCls.classSchedule || otherCls.classSchedule === '-' || normalizeClassroomStatus(otherCls.status) === 'Archived') continue;
+        
+        if (hasOverlap(cls.classSchedule, otherCls.classSchedule)) {
+          return res.status(409).json({
+            error: `Your classes overlap: "${cls.classroomName || cls.title || 'Class'}" and "${otherCls.classroomName || otherCls.title || 'Class'}" both have schedule "${cls.classSchedule}".`
+          });
+        }
+      }
+
+      // 2. Queue External conflict for Owner
+      validationTasks.push((async () => {
+        const externalConflict = await checkTeacherScheduleConflict(teacherUserId, cls.classSchedule, currentClassroomId, pool);
+        if (externalConflict.hasConflict) {
+          throw { status: 409, error: `Schedule conflict: You already have a class "${externalConflict.conflictingClassroomName}" at ${cls.classSchedule} (as owner or co-teacher).` };
+        }
+      })());
+
+      // 3. Queue Co-teacher (Assistant) conflict checks
+      const coTeachers = Array.isArray(cls.coTeachers) ? cls.coTeachers : [];
+      for (const ct of coTeachers) {
+        const ctId = Number(ct.teacherUserId || ct.userId || ct.id);
+        if (Number.isInteger(ctId) && ctId > 0 && ctId !== teacherUserId) {
+          validationTasks.push((async () => {
+            const assistantConflict = await checkTeacherScheduleConflict(ctId, cls.classSchedule, currentClassroomId, pool);
+            if (assistantConflict.hasConflict) {
+              throw { status: 409, error: `Assistant conflict: ${ct.name || `Teacher ${ctId}`} already has a class "${assistantConflict.conflictingClassroomName}" at ${cls.classSchedule}.` };
+            }
+          })());
+        }
+      }
+
+      // 4. Queue Venue conflict check
+      if (cls.venueId) {
+        validationTasks.push((async () => {
+          const venueConflict = await checkVenueScheduleConflict(cls.venueId, cls.classSchedule, currentClassroomId, pool);
+          if (venueConflict.hasConflict) {
+            throw { status: 409, error: `Venue crash: The selected venue is already occupied by class "${venueConflict.conflictingClassroomName}" during ${cls.classSchedule}.` };
+          }
+        })());
+      }
+    }
+
+    // Execute all external validation tasks in parallel
+    try {
+      await Promise.all(validationTasks);
+    } catch (err) {
+      if (err.status && err.error) {
+        return res.status(err.status).json({ error: err.error });
+      }
+      throw err; // Re-throw unexpected errors
+    }
+
     if (requestOperationType === 'student_list_managed') {
       for (const classroom of normalizedFinalOwnedClassrooms) {
         const classroomId = Number(classroom?.classroomId);
@@ -1116,10 +1288,6 @@ async function saveTeacherState(req, res) {
           ? configuredMaximumCapacity
           : null;
 
-        if (!Number.isInteger(maximumCapacity)) {
-          continue;
-        }
-
         const rosterKey = String(classroomId);
         const incomingRoster = state.studentsByClassroom?.[rosterKey] || state.studentsByClassroom?.[classroomId] || [];
         const existingRoster = existingState.studentsByClassroom?.[rosterKey] || existingState.studentsByClassroom?.[classroomId] || [];
@@ -1128,9 +1296,9 @@ async function saveTeacherState(req, res) {
         const existingCount = getUniqueStudentCountFromRoster(existingRoster);
         const rosterChanged = JSON.stringify(incomingRoster || []) !== JSON.stringify(existingRoster || []);
 
-        if (rosterChanged && incomingCount > maximumCapacity && incomingCount > existingCount) {
+        if (rosterChanged && maximumCapacity !== null && incomingCount > maximumCapacity && incomingCount > existingCount) {
           return res.status(409).json({
-            error: `Classroom \"${String(classroom?.classroomName || classroom?.title || classroomId)}\" is full (${maximumCapacity} students max)`
+            error: `Classroom "${String(classroom?.classroomName || classroom?.title || classroomId)}" is full (${maximumCapacity} students max)`
           });
         }
 
@@ -1160,6 +1328,23 @@ async function saveTeacherState(req, res) {
           }
 
           if (addedIds.length > 0) {
+            const enrollmentConflicts = [];
+            for (const newStudentId of addedIds) {
+              // --- Student Schedule Conflict Validation ---
+              const studentConflict = await checkUserScheduleConflict(newStudentId, classroomId, pool, getClassroomSchedule(classroom));
+              if (studentConflict.hasConflict) {
+                const studentName = (incomingRoster.find(s => Number(s?.studentId || s?.userId || s?.id) === newStudentId))?.name || `Student ${newStudentId}`;
+                enrollmentConflicts.push({ studentName, conflictingClassroomName: studentConflict.conflictingClassroomName });
+              }
+            }
+
+            if (enrollmentConflicts.length > 0) {
+              const conflictMessages = enrollmentConflicts.map(c => `${c.studentName} (${c.conflictingClassroomName || 'another class'})`);
+              return res.status(409).json({
+                error: `Schedule conflict(s) detected for: ${conflictMessages.join(', ')}. No changes were saved.`
+              });
+            }
+
             for (const newStudentId of addedIds) {
               await pool.query(
                 `INSERT INTO user_enrollments (user_id, target_type, target_id, enrollment_status, enrolled_at, enrolled_by)
@@ -1170,6 +1355,7 @@ async function saveTeacherState(req, res) {
               );
             }
           }
+
         }
       }
     }
@@ -1345,54 +1531,23 @@ async function getStudentClasses(req, res) {
     ).catch(() => ({ rows: [] }));
 
     const enrolledClassroomIds = new Set(
-      (enrollmentRows.rows || []).map((row) => Number(row.target_id)).filter((value) => Number.isInteger(value))
+      (enrollmentRows.rows || []).map((row) => Number(row.target_id)).filter((value) => Number.isInteger(value) && value > 0)
     );
+
+    const venuesResult = await pool.query('SELECT venue_id, name FROM venues').catch(() => ({ rows: [] }));
+    const venueMap = new Map();
+    (venuesResult.rows || []).forEach(v => venueMap.set(Number(v.venue_id), v.name));
 
     const teacherStateRows = await pool.query(
       `SELECT
         tcs.teacher_user_id,
         tcs.state_json,
-        u.full_name AS teacher_name
+        u.display_name AS teacher_name
       FROM teacher_classroom_states tcs
       JOIN users u ON u.user_id = tcs.teacher_user_id
       WHERE u.role = 'teacher'
       ORDER BY tcs.updated_at DESC`
     );
-
-    const teacherUserIds = Array.from(new Set(
-      (teacherStateRows.rows || [])
-        .map((entry) => Number(entry.teacher_user_id))
-        .filter((value) => Number.isInteger(value) && value > 0)
-    ));
-    const enrolledClassroomIdList = Array.from(enrolledClassroomIds.values());
-    const classroomMaterialFilesByClassroomId = new Map();
-
-    if (teacherUserIds.length > 0 && enrolledClassroomIdList.length > 0) {
-      const classroomFilesResult = await pool.query(
-        `SELECT file_id, user_id, classroom_id, original_filename, file_size, uploaded_at
-         FROM files
-         WHERE is_deleted = false
-           AND user_id = ANY($1::int[])
-           AND classroom_id = ANY($2::int[])
-           AND COALESCE(file_scope, 'personal') = 'classroom'
-           AND encrypted_filename LIKE 'classroom/%'
-         ORDER BY uploaded_at DESC`,
-        [teacherUserIds, enrolledClassroomIdList]
-      ).catch(() => ({ rows: [] }));
-
-      (classroomFilesResult.rows || []).forEach((fileRow) => {
-        const uploaderId = Number(fileRow.user_id);
-        const classroomId = Number(fileRow.classroom_id);
-        if (!Number.isInteger(uploaderId) || uploaderId <= 0 || !Number.isInteger(classroomId) || classroomId <= 0) {
-          return;
-        }
-
-        if (!classroomMaterialFilesByClassroomId.has(classroomId)) {
-          classroomMaterialFilesByClassroomId.set(classroomId, []);
-        }
-        classroomMaterialFilesByClassroomId.get(classroomId).push(fileRow);
-      });
-    }
 
     const submissionsResult = await pool.query(
       `SELECT classroom_id, assignment_id, file_id, file_name, file_size, comment, submission_status, grade, feedback, submitted_at
@@ -1413,228 +1568,91 @@ async function getStudentClasses(req, res) {
       const state = normalizeTeacherState(row.state_json);
       const teacherName = row.teacher_name || 'Teacher';
 
-      state.classrooms.forEach((classroom) => {
+      (state.classrooms || []).forEach((classroom) => {
         const classId = Number(classroom.classroomId || classroom.id);
-        if (!Number.isInteger(classId)) {
-          return;
-        }
+        if (!Number.isInteger(classId)) return;
 
         const ownerTeacherId = Number(classroom?.ownerTeacherId || row.teacher_user_id || 0);
-        if (!Number.isInteger(ownerTeacherId) || ownerTeacherId <= 0) {
-          return;
-        }
+        if (!Number.isInteger(ownerTeacherId) || ownerTeacherId <= 0) return;
 
-        const classIdentity = `${ownerTeacherId}:${classId}`;
+        if (normalizeClassroomStatus(classroom?.status) === 'Archived') return;
 
-        if (normalizeClassroomStatus(classroom?.status) === 'Archived') {
-          return;
-        }
-
-        const isEnrolledByTarget = enrolledClassroomIds.size > 0 && enrolledClassroomIds.has(classId);
+        const isEnrolledByTarget = enrolledClassroomIds.has(classId);
         const roster = state.studentsByClassroom?.[classId] || state.studentsByClassroom?.[String(classId)] || [];
-        const isInRoster = Array.isArray(roster)
-          ? roster.some((student) => {
-            const studentId = Number(student.studentId || student.userId || student.id);
-            return Number.isInteger(studentId) && studentId === studentUserId;
-          })
-          : false;
-
-        const rosterHasEntries = Array.isArray(roster) && roster.length > 0;
-        const isStudentAssociated = rosterHasEntries ? isInRoster : (isInRoster || isEnrolledByTarget);
-
-        if (!isStudentAssociated) {
-          return;
-        }
+        const isInRoster = Array.isArray(roster) && roster.some((s) => Number(s.studentId || s.userId || s.id) === studentUserId);
+        
+        if (!isInRoster && !isEnrolledByTarget) return;
 
         const classroomGradeLevel = String(classroom.gradeLevel || '');
-        if (!isStudentLevelAllowedForClassroom(studentLevel, classroomGradeLevel)) {
-          return;
-        }
+        if (!isStudentLevelAllowedForClassroom(studentLevel, classroomGradeLevel)) return;
 
-        const rawMaterials = state.materialsByClassroom?.[classId] || state.materialsByClassroom?.[String(classId)] || [];
-        const rawAssignments = state.assignmentsByClassroom?.[classId] || state.assignmentsByClassroom?.[String(classId)] || [];
-        const attendanceRecordsByClassroom = state.attendanceRecordsByClassroom?.[classId]
-          || state.attendanceRecordsByClassroom?.[String(classId)]
-          || {};
-        const attendanceDetailByClassroom = state.attendanceDetailByClassroom?.[classId]
-          || state.attendanceDetailByClassroom?.[String(classId)]
-          || {};
-
-        const materials = (Array.isArray(rawMaterials) ? rawMaterials : []).map((material, index) => ({
-          id: Number(material.id || index + 1),
-          fileId: Number(material.fileId || material.file_id || 0) || null,
-          title: String(material.title || material.description || material.fileName || `Material ${index + 1}`),
-          fileName: String(material.fileName || material.title || `Material ${index + 1}`),
-          size: String(material.size || material.fileSize || '-'),
-          uploadedDate: toIsoDate(material.uploadedDate || material.createdAt) || '-',
-          isNew: Boolean(material.isNew),
-          description: material.description || ''
-        }));
-
-        const coTeachers = normalizeClassroomCoTeachers(classroom?.coTeachers);
-        const allowedUploaderIds = new Set([
-          Number(ownerTeacherId),
-          ...coTeachers
-            .map((entry) => Number(entry.teacherUserId))
-            .filter((value) => Number.isInteger(value) && value > 0)
-        ].filter((value) => Number.isInteger(value) && value > 0));
-
-        const ownerClassroomMaterialFiles = (classroomMaterialFilesByClassroomId.get(classId) || [])
-          .filter((fileRow) => {
-            const uploaderId = Number(fileRow.user_id);
-            return Number.isInteger(uploaderId) && allowedUploaderIds.has(uploaderId);
-          });
-        if (ownerClassroomMaterialFiles.length > 0) {
-          const seenMaterialKeys = new Set(
-            materials.map((item) => {
-              const fileId = Number(item.fileId || 0);
-              if (Number.isInteger(fileId) && fileId > 0) {
-                return `id:${fileId}`;
-              }
-              return `name:${String(item.fileName || '').trim().toLowerCase()}`;
-            })
-          );
-
-          ownerClassroomMaterialFiles.forEach((fileRow) => {
-            const fileId = Number(fileRow.file_id);
-            const fileName = String(fileRow.original_filename || '').trim();
-            const key = Number.isInteger(fileId) && fileId > 0
-              ? `id:${fileId}`
-              : `name:${fileName.toLowerCase()}`;
-
-            if (!fileName || seenMaterialKeys.has(key)) {
-              return;
-            }
-
-            seenMaterialKeys.add(key);
-            materials.push({
-              id: Number.isInteger(fileId) && fileId > 0 ? fileId : (Date.now() + materials.length),
-              fileId: Number.isInteger(fileId) && fileId > 0 ? fileId : null,
-              title: fileName,
-              fileName,
-              size: String(fileRow.file_size || '-'),
-              uploadedDate: toIsoDate(fileRow.uploaded_at) || '-',
-              isNew: false,
-              description: ''
-            });
-          });
-        }
-
-        const assignments = (Array.isArray(rawAssignments) ? rawAssignments : []).map((assignment, index) => {
-          const assignmentId = toPositiveIntegerFromCandidates(assignment?.id, assignment?.assignmentId, index + 1);
-          const submission = submissionMap.get(`${classId}:${assignmentId}`);
-          const statusFromSubmission = submission
-            ? (submission.grade !== null && submission.grade !== undefined ? 'Graded' : 'Submitted')
-            : null;
-
-          return {
-            id: assignmentId,
-            title: String(assignment.title || `Assignment ${index + 1}`),
-            description: assignment.description || '',
-            dueDate: toIsoDate(assignment.dueDate) || '-',
-            resourceFile: assignment.resourceFile || '',
-            status: statusFromSubmission || String(assignment.status || 'Pending'),
-            submittedDate: submission ? toIsoDate(submission.submitted_at) : null,
-            submittedFileId: submission?.file_id ? Number(submission.file_id) : null,
-            submittedFileName: submission?.file_name || null,
-            submittedFileSize: submission?.file_size || null,
-            submittedComment: submission?.comment || '',
-            grade: submission?.grade !== null && submission?.grade !== undefined
-              ? `${Number(submission.grade)}/100`
-              : null,
-            feedback: submission?.feedback || ''
-          };
-        });
-
-        const attendanceDates = Object.keys(attendanceDetailByClassroom || {});
-        const attendanceHistory = attendanceDates
-          .reduce((rows, dateKey) => {
-            const statusMap = attendanceDetailByClassroom?.[dateKey];
-            if (!statusMap || typeof statusMap !== 'object') {
-              return rows;
-            }
-
-            const hasStudentRecord = Object.prototype.hasOwnProperty.call(statusMap, studentUserId)
-              || Object.prototype.hasOwnProperty.call(statusMap, String(studentUserId));
-
-            if (!hasStudentRecord) {
-              return rows;
-            }
-
-            const rawValue = statusMap[studentUserId] ?? statusMap[String(studentUserId)];
-            const recordMeta = attendanceRecordsByClassroom?.[dateKey] || {};
-            rows.push({
-              date: String(dateKey),
-              present: Boolean(rawValue),
-              takenBy: String(recordMeta.recordedByName || recordMeta.updatedByName || teacherName || 'Teacher'),
-              takenAt: recordMeta.recordedAt || recordMeta.updatedAt || null,
-              updatedBy: recordMeta.updatedByName || null,
-              updatedAt: recordMeta.updatedAt || null
-            });
-            return rows;
-          }, [])
-          .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
-
-        const attendanceStats = attendanceDates.reduce((summary, dateKey) => {
-          const statusMap = attendanceDetailByClassroom?.[dateKey];
-          if (!statusMap || typeof statusMap !== 'object') {
-            return summary;
-          }
-
-          const hasStudentRecord = Object.prototype.hasOwnProperty.call(statusMap, studentUserId)
-            || Object.prototype.hasOwnProperty.call(statusMap, String(studentUserId));
-
-          if (!hasStudentRecord) {
-            return summary;
-          }
-
-          const rawValue = statusMap[studentUserId] ?? statusMap[String(studentUserId)];
-          const isPresent = Boolean(rawValue);
-
-          return {
-            sessions: summary.sessions + 1,
-            present: summary.present + (isPresent ? 1 : 0),
-            absent: summary.absent + (isPresent ? 0 : 1)
-          };
-        }, { sessions: 0, present: 0, absent: 0 });
-
-        const attendanceRate = attendanceStats.sessions > 0
-          ? Number(((attendanceStats.present / attendanceStats.sessions) * 100).toFixed(1))
-          : null;
-
-        const classPayload = {
-          id: classIdentity,
-          classroomId: classId,
-          ownerTeacherId,
-          title: String(classroom.classroomName || classroom.title || `Classroom ${classId}`),
-          subject: String(classroom.subject || ''),
-          teacher: teacherName,
-          schedule: String(classroom.classSchedule || classroom.schedule || '-'),
-          icon: 'fa-book',
-          tone: String(classroom.subject || '').toLowerCase().includes('chemistry') ? 'green' : 'blue',
-          attendance: {
-            sessions: attendanceStats.sessions,
-            present: attendanceStats.present,
-            absent: attendanceStats.absent,
-            rate: attendanceRate,
-            history: attendanceHistory
-          },
-          materials,
-          assignments
-        };
-
+        const classIdentity = String(classId);
         const existingClass = classById.get(classIdentity);
         const isOwnerSource = ownerTeacherId === Number(row.teacher_user_id);
         const existingIsOwnerSource = existingClass ? Boolean(existingClass._isOwnerSource) : false;
 
-        if (!existingClass || (isOwnerSource && !existingIsOwnerSource)) {
-          classById.set(classIdentity, { ...classPayload, _isOwnerSource: isOwnerSource });
+        // Merge Assignments
+        const rawAssignments = state.assignmentsByClassroom?.[classId] || state.assignmentsByClassroom?.[String(classId)] || [];
+        const mergedAssignments = existingClass ? [...existingClass.assignments] : [];
+        (Array.isArray(rawAssignments) ? rawAssignments : []).forEach((a, idx) => {
+          const aid = toPositiveIntegerFromCandidates(a?.id, a?.assignmentId, idx + 1);
+          if (!mergedAssignments.find(existing => existing.id === aid)) {
+             const submission = submissionMap.get(`${classId}:${aid}`);
+             const statusFromSubmission = submission
+               ? (submission.grade !== null && submission.grade !== undefined ? 'Graded' : 'Submitted')
+               : null;
+             mergedAssignments.push({
+               id: aid,
+               title: String(a.title || `Assignment ${idx + 1}`),
+               dueDate: toIsoDate(a.dueDate) || '-',
+               status: statusFromSubmission || String(a.status || 'Pending'),
+               grade: submission?.grade !== null && submission?.grade !== undefined ? `${Number(submission.grade)}/100` : null
+             });
+          }
+        });
+
+        // Venue Logic
+        const vIdRaw = classroom.venueId || classroom.venue_id;
+        const roomNumRaw = classroom.roomNumber || classroom.room_number || classroom.location;
+        const vId = vIdRaw && !isNaN(Number(vIdRaw)) ? Number(vIdRaw) : null;
+        let vName = classroom.venueName || classroom.venue_name;
+        if (!vName && vId && venueMap.has(vId)) {
+          vName = venueMap.get(vId);
         }
+        const finalVenueName = vName || existingClass?.venueName || null;
+        const finalRoomNumber = roomNumRaw || existingClass?.roomNumber || null;
+
+        // Core Meta
+        const shouldUpdateCore = !existingClass || (isOwnerSource && !existingIsOwnerSource);
+        const subjectLower = String(classroom.subject || '').toLowerCase();
+        let displayIcon = 'fa-book';
+        let displayTone = 'blue';
+        if (subjectLower.includes('physics')) { displayIcon = 'fa-atom'; displayTone = 'purple'; }
+        else if (subjectLower.includes('science') || subjectLower.includes('chemistry')) { displayIcon = 'fa-flask'; displayTone = 'green'; }
+        else if (subjectLower.includes('bio')) { displayIcon = 'fa-microscope'; displayTone = 'orange'; }
+        else if (subjectLower.includes('math')) { displayIcon = 'fa-calculator'; displayTone = 'blue'; }
+
+        classById.set(classIdentity, {
+          id: classIdentity,
+          classroomId: classId,
+          ownerTeacherId,
+          title: shouldUpdateCore ? String(classroom.classroomName || classroom.title || `Classroom ${classId}`) : existingClass.title,
+          subject: shouldUpdateCore ? String(classroom.subject || '') : existingClass.subject,
+          teacher: shouldUpdateCore ? teacherName : existingClass.teacher,
+          schedule: shouldUpdateCore ? String(classroom.classSchedule || classroom.schedule || '-') : existingClass.schedule,
+          icon: shouldUpdateCore ? displayIcon : existingClass.icon,
+          tone: shouldUpdateCore ? displayTone : existingClass.tone,
+          venueName: finalVenueName,
+          roomNumber: finalRoomNumber,
+          assignments: mergedAssignments,
+          materials: existingClass?.materials || [],
+          attendance: existingClass?.attendance || { sessions: 0, present: 0, absent: 0, rate: null, history: [] },
+          _isOwnerSource: isOwnerSource || existingIsOwnerSource
+        });
       });
     });
 
     const classes = Array.from(classById.values()).map(({ _isOwnerSource, ...rest }) => rest);
-
     return res.json({ classes });
   } catch (error) {
     console.error('Get student classes error:', error);
@@ -1708,13 +1726,8 @@ async function submitStudentAssignment(req, res) {
 
       for (const classroom of classrooms) {
         const candidateClassroomId = toPositiveIntegerFromCandidates(classroom?.classroomId, classroom?.id);
-        if (!candidateClassroomId) {
-          continue;
-        }
-
-        if (normalizeClassroomStatus(classroom?.status) === 'Archived') {
-          continue;
-        }
+        if (!candidateClassroomId) continue;
+        if (normalizeClassroomStatus(classroom?.status) === 'Archived') continue;
 
         const classAssignments = state.assignmentsByClassroom?.[candidateClassroomId]
           || state.assignmentsByClassroom?.[String(candidateClassroomId)]
@@ -1725,9 +1738,7 @@ async function submitStudentAssignment(req, res) {
           return normalizedAssignmentId === assignmentId;
         });
 
-        if (!hasAssignment) {
-          continue;
-        }
+        if (!hasAssignment) continue;
 
         const roster = state.studentsByClassroom?.[candidateClassroomId]
           || state.studentsByClassroom?.[String(candidateClassroomId)]
@@ -1740,14 +1751,10 @@ async function submitStudentAssignment(req, res) {
         const isEnrolled = enrolledClassroomIds.has(candidateClassroomId);
         const isAssociated = rosterList.length > 0 ? isInRoster : (isInRoster || isEnrolled);
 
-        if (!isAssociated) {
-          continue;
-        }
+        if (!isAssociated) continue;
 
         const classroomGradeLevel = String(classroom?.gradeLevel || '');
-        if (!isStudentLevelAllowedForClassroom(studentLevel, classroomGradeLevel)) {
-          continue;
-        }
+        if (!isStudentLevelAllowedForClassroom(studentLevel, classroomGradeLevel)) continue;
 
         eligibleClassroomIdsForAssignment.add(candidateClassroomId);
       }
@@ -2207,7 +2214,7 @@ async function joinClassByCode(req, res) {
       }
 
       // Check for schedule overlapping with existing enrollments
-      const scheduleConflict = await checkUserScheduleConflict(studentUserId, classroomId, pool);
+      const scheduleConflict = await checkUserScheduleConflict(studentUserId, classroomId, pool, getClassroomSchedule(matchedClassroom.classroom));
       if (scheduleConflict.hasConflict) {
         await enrollmentClient.query('ROLLBACK');
         return res.status(409).json({

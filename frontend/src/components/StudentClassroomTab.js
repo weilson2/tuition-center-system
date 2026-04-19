@@ -833,7 +833,8 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
     try {
       setLoadingClasses(true);
       const response = await classroomAPI.getStudentClasses();
-      setEnrolledClasses(Array.isArray(response?.classes) ? response.classes : []);
+      const classes = Array.isArray(response?.classes) ? response.classes : [];
+      setEnrolledClasses(classes);
     } catch (error) {
       console.error('Failed to load student classes:', error);
       setEnrolledClasses([]);
@@ -1340,6 +1341,7 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
 
     setSubmitAssignment(null);
     setSubmittingAssignment(false);
+    showInfoDialog('Assignment submitted successfully', 'Success');
   };
 
   const handleJoinClassByCode = async () => {
@@ -1473,6 +1475,12 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
               <p className="subject">{classroom.subject}</p>
               <p><i className="fas fa-user"></i>{classroom.teacher}</p>
               <p><i className="fas fa-clock"></i>{classroom.schedule}</p>
+              {(classroom.venueName || classroom.roomNumber) && (
+                <p className="student-class-location">
+                  <i className="fas fa-location-dot"></i>
+                  {classroom.venueName || classroom.roomNumber}
+                </p>
+              )}
 
               <div className="student-class-card-footer">
                 <span>{classroom.assignments.filter((item) => normalizeAssignmentStatus(item.status) === STUDENT_ASSIGNMENT_STATUS.PENDING).length} pending assignments</span>
@@ -1500,6 +1508,12 @@ function StudentClassroomTab({ navigationIntent = null, onNavigationIntentConsum
             <h3>{selectedClass.title}</h3>
             <p>{selectedClass.subject} • {selectedClass.teacher}</p>
             <p><i className="fas fa-clock"></i> {selectedClass.schedule}</p>
+            {(selectedClass.venueName || selectedClass.roomNumber) && (
+              <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#64748b', fontSize: '0.9rem', marginTop: '0.35rem' }}>
+                <i className="fas fa-location-dot" style={{ color: '#2563eb' }}></i>
+                {selectedClass.venueName || selectedClass.roomNumber}
+              </p>
+            )}
           </div>
 
           <div className="student-detail-stats">

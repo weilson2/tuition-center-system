@@ -44,6 +44,8 @@ app.use('/api/storage', require('./routes/storage'));
 app.use('/api/users', require('./routes/users'));
 
 app.use('/api/classroom', require('./routes/classroom'));
+app.use('/api/venues', require('./routes/venue'));
+
 
 
 

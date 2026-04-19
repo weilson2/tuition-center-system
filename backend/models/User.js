@@ -145,32 +145,37 @@ static async lockAccount(userId, lockDuration = 15) {
   );
 }
 
-// Check if account is locked
-static async isAccountLocked(userId) {
-  const result = await pool.query(
-    'SELECT account_locked_until FROM users WHERE user_id = $1',
-    [userId]
-  );
-  
-  const user = result.rows[0];
-  if (!user || !user.account_locked_until) return false;
-  
-  // Compare dates in JavaScript (simpler and more reliable)
-  const lockUntil = new Date(user.account_locked_until);
-  const now = new Date();
-  
-  // If lock has expired, clear it
-  if (lockUntil <= now) {
-    await pool.query(
-      'UPDATE users SET account_locked_until = NULL, failed_login_attempts = 0 WHERE user_id = $1',
+  // Check if account is locked
+  static async isAccountLocked(userId) {
+    const result = await pool.query(
+      'SELECT account_locked_until FROM users WHERE user_id = $1',
       [userId]
     );
-    return false;
+    
+    const user = result.rows[0];
+    if (!user || !user.account_locked_until) return false;
+    
+    // Compare dates in JavaScript (simpler and more reliable)
+    const lockUntil = new Date(user.account_locked_until);
+    const now = new Date();
+    
+    // If lock has expired, clear it
+    if (lockUntil <= now) {
+      await pool.query(
+        'UPDATE users SET account_locked_until = NULL, failed_login_attempts = 0 WHERE user_id = $1',
+        [userId]
+      );
+      return false;
+    }
+    
+    // Lock is still active
+    return true;
   }
-  
-  // Lock is still active
-  return true;
-}
+
+  // Delete user
+  static async delete(userId) {
+    await pool.query('DELETE FROM users WHERE user_id = $1', [userId]);
+  }
 }
 
 module.exports = User;

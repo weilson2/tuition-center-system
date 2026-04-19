@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { adminUserAPI } from '../services/api';
+import { adminUserAPI, classroomAPI } from '../services/api';
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
 import '../styles/UserManagement.css';
@@ -301,8 +301,10 @@ function UserManagementTab({ currentUser }) {
   const [resettingPasswordUserId, setResettingPasswordUserId] = useState(null);
 
   const [selectedEnrollUserIds, setSelectedEnrollUserIds] = useState([]);
-  const [enrollData, setEnrollData] = useState({ targetType: 'classroom', targetId: '' });
+  const [enrollData, setEnrollData] = useState({ targetType: 'classroom', targetId: '', role: 'student', level: '' });
   const [enrollLoading, setEnrollLoading] = useState(false);
+  const [allClassrooms, setAllClassrooms] = useState([]);
+  const [loadingClassrooms, setLoadingClassrooms] = useState(false);
 
   const [rbacData, setRbacData] = useState({ roles: [], permissions: [], matrix: {} });
   const [rbacLoading, setRbacLoading] = useState(false);
@@ -394,8 +396,9 @@ function UserManagementTab({ currentUser }) {
         page,
         limit: pagination.limit,
         search: filterOverrides.search !== undefined ? filterOverrides.search : userFilters.search,
-        role: filterOverrides.role !== undefined ? filterOverrides.role : userFilters.role,
-        status: filterOverrides.status !== undefined ? filterOverrides.status : userFilters.status
+        role: filterOverrides.role !== undefined ? filterOverrides.role : (section === 'enroll' ? enrollData.role : userFilters.role),
+        status: filterOverrides.status !== undefined ? filterOverrides.status : userFilters.status,
+        level: filterOverrides.level !== undefined ? filterOverrides.level : (section === 'enroll' ? enrollData.level : '')
       });
       setUsers(response.users || []);
       setUserStats(response.stats || {
@@ -409,6 +412,18 @@ function UserManagementTab({ currentUser }) {
       showMessage(error.response?.data?.error || 'Failed to load users', 'error');
     } finally {
       setLoadingUsers(false);
+    }
+  };
+
+  const fetchAdminClassrooms = async () => {
+    try {
+      setLoadingClassrooms(true);
+      const response = await classroomAPI.getAdminClassrooms();
+      setAllClassrooms(response.classrooms || []);
+    } catch (error) {
+      showMessage(error.response?.data?.error || 'Failed to load classrooms', 'error');
+    } finally {
+      setLoadingClassrooms(false);
     }
   };
 
@@ -439,6 +454,9 @@ function UserManagementTab({ currentUser }) {
   useEffect(() => {
     if (section === 'export' || section === 'enroll' || section === 'import') {
       fetchUsers(1);
+    }
+    if (section === 'enroll') {
+      fetchAdminClassrooms();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
@@ -541,10 +559,25 @@ function UserManagementTab({ currentUser }) {
         targetType: enrollData.targetType,
         targetId: enrollData.targetId
       });
-      showMessage(
-        `Enrollment complete: ${response.summary.successCount} success, ${response.summary.failedCount} failed`,
-        response.summary.failedCount > 0 ? 'warning' : 'success'
-      );
+      const successCount = response.summary?.successCount || 0;
+      const failedCount = response.summary?.failedCount || 0;
+      const failedList = response.failed || [];
+
+      if (failedCount === 0) {
+        showMessage(`Successfully enrolled ${successCount} student(s).`);
+      } else {
+        const failedDetails = failedList
+          .map(f => {
+            const user = users.find(u => Number(u.user_id) === Number(f.userId));
+            return `${user?.full_name || `User ${f.userId}`} (${f.reason})`;
+          })
+          .join(', ');
+        
+        showMessage(
+          `Enrollment partial: ${successCount} success. FAILED for: ${failedDetails}.`,
+          'warning'
+        );
+      }
       setSelectedEnrollUserIds([]);
     } catch (error) {
       showMessage(error.response?.data?.error || 'Failed to enroll users', 'error');
@@ -660,12 +693,34 @@ function UserManagementTab({ currentUser }) {
         await executeResetRolePermissions(payload?.role);
       } else if (actionType === 'edit-user-role-change') {
         await performEditUser(payload);
+      } else if (actionType === 'delete-user') {
+        await executeDeleteUser(payload?.userId);
       }
 
       setConfirmDialogState({ open: false, title: '', message: '', actionType: '', payload: null });
     } finally {
       setConfirmingDialogAction(false);
     }
+  };
+
+  const executeDeleteUser = async (userId) => {
+    try {
+      await adminUserAPI.deleteUser(userId);
+      showMessage('User deleted successfully');
+      fetchUsers(pagination.page);
+    } catch (error) {
+      showMessage(error.response?.data?.error || 'Failed to delete user', 'error');
+    }
+  };
+
+  const handleDeleteUser = (userId) => {
+    setConfirmDialogState({
+      open: true,
+      title: 'Confirm Delete User',
+      message: 'Are you sure you want to PERMANENTLY delete this user? This action cannot be undone.',
+      actionType: 'delete-user',
+      payload: { userId }
+    });
   };
 
   const downloadTemplate = async () => {
@@ -893,7 +948,7 @@ function UserManagementTab({ currentUser }) {
                 <i className="fas fa-search"></i>
                 <input
                   type="text"
-                  placeholder="Search users..."
+                  placeholder="Search users by name/email/ID..."
                   value={userFilters.search}
                   onChange={(event) => setUserFilters((prev) => ({ ...prev, search: event.target.value }))}
                   onKeyDown={(event) => {
@@ -967,7 +1022,13 @@ function UserManagementTab({ currentUser }) {
                   <tr key={item.user_id}>
                     <td>
                       <div className="um-user-cell">
-                        <span className={`um-user-avatar ${role}`}>{String(item.full_name || 'U').charAt(0).toUpperCase()}</span>
+                        <span className={`um-user-avatar ${role}`}>
+                          {item.profile_picture_url ? (
+                            <img src={item.profile_picture_url} alt={item.full_name} />
+                          ) : (
+                            String(item.full_name || 'U').charAt(0).toUpperCase()
+                          )}
+                        </span>
                         <div>
                           <strong>{item.full_name}</strong>
                           <p>
@@ -1005,6 +1066,14 @@ function UserManagementTab({ currentUser }) {
                         >
                           <i className={`fas ${resettingPasswordUserId === item.user_id ? 'fa-spinner fa-spin' : 'fa-key'}`}></i>
                         </button>
+                        <button
+                          className="um-btn-icon delete"
+                          title="Delete User"
+                          onClick={() => handleDeleteUser(item.user_id)}
+                          disabled={currentUser?.userId === item.user_id}
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1015,7 +1084,11 @@ function UserManagementTab({ currentUser }) {
           </div>
 
           <div className="um-pagination modern">
-            <span>Showing 1 to {userRows.length} of {pagination.total} users</span>
+            <span>
+              {loadingUsers 
+                ? <><i className="fas fa-spinner fa-spin"></i> Loading users...</> 
+                : `Showing 1 to ${userRows.length} of ${pagination.total} users`}
+            </span>
             <div className="um-page-controls">
               <button
                 className="um-btn-secondary"
@@ -1043,23 +1116,48 @@ function UserManagementTab({ currentUser }) {
           <div className="um-filter-grid">
             <input
               type="text"
-              placeholder="Search users by name/email"
+              placeholder="Search users by name/email/ID"
               value={userFilters.search}
               onChange={(event) => setUserFilters((prev) => ({ ...prev, search: event.target.value }))}
             />
             <select
-              value={enrollData.targetType}
-              onChange={(event) => setEnrollData((prev) => ({ ...prev, targetType: event.target.value }))}
-            >
-              <option value="classroom">Classroom</option>
-              <option value="course">Course</option>
-            </select>
-            <input
-              type="number"
-              placeholder="Classroom/Course ID"
               value={enrollData.targetId}
               onChange={(event) => setEnrollData((prev) => ({ ...prev, targetId: event.target.value }))}
-            />
+              disabled={loadingClassrooms}
+            >
+              <option value="">{loadingClassrooms ? '↻ Loading classrooms...' : 'Select Classroom'}</option>
+              {allClassrooms.map((cls) => (
+                <option key={cls.classroomId} value={cls.classroomId}>
+                  [{cls.classroomId}] {cls.classroomName} ({cls.ownerTeacherName})
+                </option>
+              ))}
+            </select>
+            <select
+              value={enrollData.role}
+              onChange={(event) => {
+                const newRole = event.target.value;
+                setEnrollData((prev) => ({ 
+                  ...prev, 
+                  role: newRole,
+                  level: newRole === 'teacher' ? '' : prev.level 
+                }));
+              }}
+            >
+              <option value="">All Roles</option>
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+            </select>
+            {enrollData.role !== 'teacher' && (
+              <select
+                value={enrollData.level}
+                onChange={(event) => setEnrollData((prev) => ({ ...prev, level: event.target.value }))}
+              >
+                <option value="">All Levels</option>
+                {STUDENT_LEVEL_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            )}
             <button className="um-btn-secondary" onClick={() => fetchUsers(1)}>
               Search
             </button>
@@ -1091,7 +1189,13 @@ function UserManagementTab({ currentUser }) {
                       </td>
                       <td>
                         <div className="um-user-cell">
-                          <span className={`um-user-avatar ${role}`}>{String(item.full_name || 'U').charAt(0).toUpperCase()}</span>
+                          <span className={`um-user-avatar ${role}`}>
+                            {item.profile_picture_url ? (
+                              <img src={item.profile_picture_url} alt={item.full_name} />
+                            ) : (
+                              String(item.full_name || 'U').charAt(0).toUpperCase()
+                            )}
+                          </span>
                           <div>
                             <strong>{item.full_name}</strong>
                             <p>{getUserCode(item, index)}</p>
@@ -1127,7 +1231,7 @@ function UserManagementTab({ currentUser }) {
             <h3>Role & Permission (RBAC)</h3>
             <p>Configure module access for each role.</p>
           </div>
-          {rbacLoading && <p>Loading permissions...</p>}
+          {rbacLoading && <div className="um-loading"><i className="fas fa-spinner fa-spin"></i> Loading permissions...</div>}
           {!rbacLoading && (
             <div className="um-rbac-grid">
               {rbacData.roles.map((role) => {
@@ -1341,7 +1445,13 @@ function UserManagementTab({ currentUser }) {
                       </td>
                       <td>
                         <div className="um-user-cell">
-                          <span className={`um-user-avatar ${role}`}>{String(item.full_name || 'U').charAt(0).toUpperCase()}</span>
+                          <span className={`um-user-avatar ${role}`}>
+                            {item.profile_picture_url ? (
+                              <img src={item.profile_picture_url} alt={item.full_name} />
+                            ) : (
+                              String(item.full_name || 'U').charAt(0).toUpperCase()
+                            )}
+                          </span>
                           <div>
                             <strong>{item.full_name}</strong>
                             <p>{getUserCode(item, index)} • {item.email}</p>
